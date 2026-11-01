@@ -6,12 +6,10 @@
  * 2. 确认后：写后端 content_language → 切 vue-i18n locale → 短暂提示 → location.reload()
  *    （整页重载让所有组件干净重建，避免深嵌组件依赖 watch 的时序问题）
  */
-import { createApp, h, ref } from 'vue'
+import { createApp, h } from 'vue'
 import { i18n, setUiLocale, type UiLocale } from '~/composables/i18n'
 import { settingsAPI } from '~/composables/useApi'
 import LanguageSwitchDialog from '~/components/LanguageSwitchDialog.vue'
-
-let pending: { resolve: (ok: boolean) => void } | null = null
 
 /** 弹确认框；resolve(true) = 用户确认切换 */
 function confirmDialog(lang: UiLocale): Promise<boolean> {
@@ -21,36 +19,28 @@ function confirmDialog(lang: UiLocale): Promise<boolean> {
     const title = i18n.global.t('components.langSwitch.title', { lang: i18n.global.t(nameKey) })
     const message = i18n.global.t('components.langSwitch.message')
 
-    const open = ref(true)
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const app = createApp({
+    let settled = false
+    let app: ReturnType<typeof createApp> | null = null
+    const finish = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      app?.unmount()
+      host.remove()
+      resolve(ok)
+    }
+    app = createApp({
       setup: () => () => h(LanguageSwitchDialog, {
-        open: open.value,
+        open: true,
         title,
         message,
-        onConfirm: () => { open.value = false },
-        onCancel: () => { open.value = false },
+        onConfirm: () => finish(true),
+        onCancel: () => finish(false),
       }),
     })
     app.use(i18n as unknown as Parameters<typeof app.use>[0])
     app.mount(host)
-
-    pending = {
-      resolve: (ok) => {
-        app.unmount()
-        host.remove()
-        resolve(ok)
-      },
-    }
-    // open 置 false 后由 watch 关闭并 resolve —— 用简单轮询代替（弹窗体积小，不值得引 watch 复杂度）
-    const timer = setInterval(() => {
-      if (!open.value) {
-        clearInterval(timer)
-        pending?.resolve(true)
-        pending = null
-      }
-    }, 80)
   })
 }
 
@@ -63,8 +53,17 @@ export async function confirmUnifiedLanguage(lang: UiLocale) {
   if (!ok) return
   switching = true
   try {
-    await settingsAPI.setContentLanguage(lang)
-  } catch { /* 后端失败不阻断界面切换 */ }
+    const saved = await settingsAPI.setContentLanguage(lang)
+    if (saved?.language !== lang) throw new Error(`Language was not saved as ${lang}`)
+  } catch (error) {
+    switching = false
+    try {
+      const { toast } = await import('vue-sonner')
+      toast.error(i18n.global.t('components.langSwitch.failed'))
+    } catch { /* 提示失败不覆盖原始错误 */ }
+    console.error('[language] failed to persist unified language', error)
+    return
+  }
   setUiLocale(lang)
   try {
     const { toast } = await import('vue-sonner')

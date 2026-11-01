@@ -104,6 +104,7 @@
       "effectAi": "AI output (script rewriting, asset extraction, storyboard, prompts) uses this language, with matching agent prompts/skills",
       "effectRefresh": "The page refreshes automatically after confirming",
       "confirm": "Switch & Refresh",
+      "failed": "Could not save the language. Please try again.",
       "refreshing": "Language switched, refreshing…"
     }
   },

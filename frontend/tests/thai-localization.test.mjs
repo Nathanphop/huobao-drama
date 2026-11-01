@@ -34,3 +34,18 @@ test('other locales can name Thai in the unified-language confirmation', () => {
     assert.match(read(`app/locales/${locale}.json`), /"langNameTh"/)
   }
 })
+
+test('unified language switching persists first and keeps browser surfaces in sync', () => {
+  const unified = read('app/composables/useUnifiedLanguage.ts')
+  const plugin = read('app/plugins/i18n.client.ts')
+  const settings = read('app/pages/settings.vue')
+
+  assert.match(unified, /onConfirm: \(\) => finish\(true\)/)
+  assert.match(unified, /onCancel: \(\) => finish\(false\)/)
+  assert.match(unified, /saved\?\.language !== lang/)
+  assert.match(unified, /failed to persist unified language/)
+  assert.doesNotMatch(unified, /setInterval/)
+  assert.match(plugin, /settingsAPI\.contentLanguage\(\)/)
+  assert.match(plugin, /setUiLocale\(language as UiLocale\)/)
+  assert.match(settings, /contentLanguage\.value === lang && locale\.value === lang/)
+})

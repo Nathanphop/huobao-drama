@@ -1348,7 +1348,7 @@ async function loadContentLanguage() {
   } catch { /* 保持默认 */ }
 }
 async function setContentLanguage(lang) {
-  if (contentLanguage.value === lang) return
+  if (contentLanguage.value === lang && locale.value === lang) return
   // UI 语言 = AI 内容语言：确认弹窗 → 统一切换 → 刷新（顶栏 LocaleSwitcher 同一入口）
   await confirmUnifiedLanguage(lang)
 }
