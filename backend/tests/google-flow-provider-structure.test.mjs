@@ -29,3 +29,13 @@ test('Google Flow generation is wired into the Huobao image and video task pipel
   assert.match(service, /google_flow_image_auto\.py/)
   assert.match(service, /google_flow_video_auto\.py/)
 })
+
+test('Google Flow video automation tolerates dynamic settings UI and local frame uploads', () => {
+  const video = read('../scripts/google-flow/google_flow_video_auto.py')
+  assert.match(video, /def find_video_settings_trigger/)
+  assert.match(video, /Settings\\s\*trigger/)
+  assert.match(video, /page\.reload\(wait_until="domcontentloaded"/)
+  assert.match(video, /page\.expect_file_chooser/)
+  assert.match(video, /\^Upload media\$/)
+  assert.match(video, /chooser_info\.value\.set_files\(local_path\)/)
+})

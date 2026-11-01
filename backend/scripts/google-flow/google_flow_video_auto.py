@@ -70,12 +70,48 @@ def select_video_model(page, model):
     page.wait_for_timeout(350)
 
 
+def find_video_settings_trigger(page, timeout_ms=30000):
+    """Find the compact generation-settings button across Flow UI rollouts.
+
+    Flow occasionally replaces the prompt composer while an Angular chunk is
+    loading. During that window an exact accessible-name lookup can return no
+    matches even though the button appears a moment later. Prefer the stable
+    accessible name, accept an appended summary, and reload the project once
+    before reporting a real UI incompatibility.
+    """
+    for attempt in range(2):
+        deadline = time.time() + timeout_ms / 1000
+        while time.time() < deadline:
+            candidates = (
+                page.get_by_role(
+                    "button",
+                    name=re.compile(r"Settings\s*trigger", re.I),
+                ),
+                page.locator(
+                    'button[aria-label*="settings" i]:not([aria-label="Settings"])'
+                ),
+                page.locator(
+                    'button:has-text("Veo"), button:has-text("Omni"), '
+                    'button:has-text("Video ·")'
+                ),
+            )
+            for locator in candidates:
+                trigger = first_visible(locator)
+                if trigger:
+                    return trigger
+            page.wait_for_timeout(250)
+        if attempt == 0:
+            page.reload(wait_until="domcontentloaded", timeout=90000)
+            page.wait_for_timeout(5000)
+            close_optional_ui(page)
+    raise RuntimeError("ไม่พบปุ่มตั้งค่าวิดีโอที่มองเห็นได้ใน Google Flow หลังรีโหลดแล้ว")
+
+
 def configure_video_settings(page, aspect_ratio, model, video_type, resolution, duration):
-    trigger = wait_for_visible(
-        page,
-        page.get_by_role("button", name="Settings trigger", exact=True),
-        "ปุ่มตั้งค่า Flow",
-    )
+    # Waiting for the editor first distinguishes a composer that has not loaded
+    # from a genuine settings-button rollout.
+    find_prompt_editor(page)
+    trigger = find_video_settings_trigger(page)
     trigger.click(timeout=10000)
     page.wait_for_timeout(300)
     click_radio(page, "Video")
@@ -104,15 +140,115 @@ def attach_frame_image(page, spec, slot):
         "หน้าต่างเลือกภาพ Frame",
     )
 
+    local_path = os.path.abspath(str(spec.get("path") or ""))
     display_name = str(spec.get("displayName") or "").strip()
     media_id = str(spec.get("mediaId") or "").strip()
     asset_url = normalize_flow_asset_url(spec.get("assetUrl", ""))
+    options = page.locator('[role="option"]')
+
+    # References originating in Huobao are local temporary files and do not
+    # have a Flow asset identity yet. Upload them from inside the frame picker;
+    # Flow attaches the uploaded file to the selected Start/End slot directly.
+    if local_path and not (display_name or media_id or asset_url):
+        if not os.path.isfile(local_path):
+            raise RuntimeError(f"ไม่พบไฟล์ภาพสำหรับ {slot} frame")
+        upload = first_visible(
+            page.get_by_role(
+                "button",
+                name=re.compile(r"^Upload media$|^อัปโหลด(?:สื่อ)?$", re.I),
+            )
+        ) or first_visible(
+            page.get_by_text(
+                re.compile(r"^Upload media$|^อัปโหลด(?:สื่อ)?$", re.I),
+                exact=True,
+            )
+        )
+        if not upload:
+            raise RuntimeError(f"Google Flow ไม่พบปุ่ม Upload media สำหรับ {slot} frame")
+        previous_urls = set(
+            options.evaluate_all(
+                "items => items.flatMap(item => "
+                "[...item.querySelectorAll('img')].map(image => image.currentSrc || image.src)"
+                ").filter(Boolean)"
+            )
+        )
+        try:
+            with page.expect_file_chooser(timeout=10000) as chooser_info:
+                upload.click(timeout=10000)
+            chooser_info.value.set_files(local_path)
+        except Exception:
+            file_inputs = page.locator('input[type="file"]')
+            if not file_inputs.count():
+                raise RuntimeError(f"Google Flow ไม่เปิดตัวเลือกไฟล์สำหรับ {slot} frame")
+            file_inputs.last.set_input_files(local_path, timeout=30000)
+
+        # Current Flow keeps the picker open. Wait for the uploading tile to
+        # become a real asset, prefer its new media URL over same-name older
+        # uploads, then select/confirm it as the requested frame.
+        file_name = os.path.basename(local_path).lower()
+        matching_index = -1
+        fallback_index = -1
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            match = options.evaluate_all(
+                r"""(items, target) => {
+                    const candidates = items.map((item, index) => ({
+                        index,
+                        text: (item.textContent || '').trim().toLowerCase(),
+                        urls: [...item.querySelectorAll('img')]
+                            .map(image => image.currentSrc || image.src)
+                            .filter(Boolean),
+                    })).filter(item =>
+                        !item.text.startsWith('uploading') &&
+                        item.text.includes(target.fileName)
+                    )
+                    const fresh = candidates.find(item =>
+                        item.urls.some(url => !target.previousUrls.includes(url))
+                    )
+                    return {
+                        freshIndex: fresh?.index ?? -1,
+                        fallbackIndex: candidates[0]?.index ?? -1,
+                    }
+                }""",
+                {"fileName": file_name, "previousUrls": list(previous_urls)},
+            )
+            matching_index = int(match.get("freshIndex", -1))
+            fallback_index = int(match.get("fallbackIndex", fallback_index))
+            if matching_index >= 0:
+                text = options.nth(matching_index).inner_text().strip().lower()
+                if not text.startswith("uploading"):
+                    break
+            page.wait_for_timeout(1000)
+        if matching_index < 0:
+            matching_index = fallback_index
+        if matching_index < 0:
+            raise RuntimeError(f"Google Flow อัปโหลดภาพ {slot} frame แล้วแต่ไม่พบในรายการ Asset")
+
+        options.nth(matching_index).click(timeout=10000)
+        page.wait_for_timeout(700)
+        if not first_visible(
+            page.get_by_role("heading", name="Select a frame image", exact=True)
+        ):
+            return
+        confirm = first_visible(
+            page.get_by_role("button", name="Add to prompt", exact=True)
+        )
+        for _ in range(60):
+            if confirm and confirm.is_enabled():
+                confirm.click(timeout=10000)
+                page.wait_for_timeout(700)
+                return
+            page.wait_for_timeout(500)
+            confirm = first_visible(
+                page.get_by_role("button", name="Add to prompt", exact=True)
+            )
+        raise RuntimeError(f"Google Flow ยังไม่พร้อมแนบภาพเป็น {slot} frame")
+
     search = first_visible(page.get_by_role("textbox", name="Search assets", exact=True))
     if search and display_name:
         search.fill(display_name)
         page.wait_for_timeout(700)
 
-    options = page.locator('[role="option"]')
     try:
         options.first.wait_for(state="visible", timeout=15000)
     except Exception:

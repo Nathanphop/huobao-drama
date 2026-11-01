@@ -3,3 +3,5 @@ dist/
 *.js
 *.d.ts
 *.map
+__pycache__/
+*.pyc
