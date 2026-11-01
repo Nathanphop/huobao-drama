@@ -53,3 +53,13 @@ test('workbench switches the real Google Flow account for image and video config
   assert.match(english, /"account": "Flow account"/)
   assert.match(thai, /account: 'บัญชี Flow'/)
 })
+
+test('workbench topbar separates project actions from generation controls', () => {
+  const episode = read('app/views/drama/episode.vue')
+
+  assert.match(episode, /grid-template-rows: 27px 30px/)
+  assert.match(episode, /\.studio-actions \{[\s\S]*?grid-row: 1/)
+  assert.match(episode, /\.studio-model-picks \{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?grid-row: 2/)
+  assert.match(episode, /overflow-x: auto/)
+  assert.match(episode, /\.studio-title \{[\s\S]*?text-overflow: ellipsis/)
+})

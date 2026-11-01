@@ -3763,12 +3763,13 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
 }
 
 .studio-topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 27px 30px;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 3px 10px;
   flex-shrink: 0;
-  min-height: 40px;
+  min-height: 65px;
   padding: 4px 10px;
   border-radius: var(--radius-lg);
   background: var(--header-bg);
@@ -3787,6 +3788,8 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
 }
 
 .studio-topbar-main {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3796,6 +3799,7 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
   backdrop-filter: none;
   background: transparent;
   min-width: 0;
+  overflow: hidden;
 }
 
 /* 用更高特异性压过后面的 .back-btn{height:40px}，保持顶栏紧凑 */
@@ -3814,7 +3818,8 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .studio-overline {
   display: none;
@@ -3833,6 +3838,10 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
 }
 
 .studio-title {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 13px;
   line-height: 1;
   letter-spacing: -0.04em;
@@ -3857,6 +3866,7 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
   gap: 4px;
   flex-wrap: nowrap;
   min-width: 0;
+  overflow: hidden;
 }
 
 .studio-meta-pill {
@@ -3888,14 +3898,15 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
 }
 
 .studio-topbar-side {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  display: contents;
 }
 
 .studio-actions {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 .studio-topbar .btn {
@@ -4765,13 +4776,20 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
 }
 .character-gen-btn { flex-shrink: 0; align-self: center; }
 .studio-model-picks {
+  grid-column: 1 / -1;
+  grid-row: 2;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-right: 12px;
-  padding-right: 12px;
-  border-right: 1px solid var(--border);
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 3px 0 0;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.studio-model-picks::-webkit-scrollbar { display: none; }
 .flow-credit-pill {
   display: inline-flex;
   align-items: center;
@@ -6405,23 +6423,32 @@ button.video-task-metric.on { box-shadow: 0 0 0 2px var(--accent); }
   }
 
   .studio-topbar-main {
+    grid-column: 1;
+    grid-row: 1;
     align-items: flex-start;
   }
 
   .studio-topbar {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
     align-items: stretch;
   }
 
-  .studio-topbar-side {
-    justify-content: space-between;
+  .studio-actions {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  .studio-model-picks {
+    grid-column: 1;
+    grid-row: 3;
   }
 
   .sidebar {
     max-height: 340px;
   }
 
-  .studio-topbar-side,
   .studio-actions {
     flex-wrap: wrap;
   }
