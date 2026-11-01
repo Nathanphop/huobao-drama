@@ -8,7 +8,7 @@ import { refreshSkillWorkspaces, skillsManagerWorkspace } from '../agents/skills
 
 const app = new Hono()
 const fsm = () => skillsManagerWorkspace.filesystem!
-const LANGS = ['zh', 'en', 'ja', 'ko']
+const LANGS = ['zh', 'en', 'ja', 'ko', 'th']
 const normalizeLang = (v?: string) => (v && LANGS.includes(v) ? v : 'zh')
 /** 技能文件路径；lang 非 zh 时为语言变体 SKILL.<lang>.md */
 const skillFile = (id: string, lang?: string) => `skills/${id}/SKILL${lang && lang !== 'zh' ? `.${lang}` : ''}.md`

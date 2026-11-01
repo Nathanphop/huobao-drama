@@ -10,16 +10,18 @@ import zh from '../locales/zh.json'
 import en from '../locales/en.json'
 import ja from '../locales/ja.json'
 import ko from '../locales/ko.json'
+import th from '../locales/th'
 
 export const LOCALE_STORAGE_KEY = 'huobao:locale'
 
-export type UiLocale = 'zh' | 'en' | 'ja' | 'ko'
+export type UiLocale = 'zh' | 'en' | 'ja' | 'ko' | 'th'
 
 export const UI_LOCALES: Array<{ value: UiLocale; label: string }> = [
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
   { value: 'ja', label: '日本語' },
   { value: 'ko', label: '한국어' },
+  { value: 'th', label: 'ไทย' },
 ]
 
 export function readStoredLocale(): UiLocale {
@@ -39,8 +41,8 @@ export function persistLocale(locale: UiLocale) {
 export const i18n = createI18n({
   legacy: false,
   locale: readStoredLocale(),
-  fallbackLocale: 'zh',
-  messages: { zh, en, ja, ko },
+  fallbackLocale: { th: ['en'], default: ['zh'] },
+  messages: { zh, en, ja, ko, th },
   missingWarn: false,
   fallbackWarn: false,
 })

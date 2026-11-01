@@ -1317,6 +1317,7 @@ const contentLangOptions = [
   { value: 'en', label: 'English', shortLabel: 'EN' },
   { value: 'ja', label: '日本語', shortLabel: '日本語' },
   { value: 'ko', label: '한국어', shortLabel: '한국어' },
+  { value: 'th', label: 'ไทย', shortLabel: 'ไทย' },
 ]
 // ===== Agent 配置：prompt/skill 编辑的语言版本（只读跟随内容语言） =====
 const agentPromptFallback = ref(false)   // 当前语言无独立 prompt 文件，展示的是回退内容

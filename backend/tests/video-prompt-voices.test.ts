@@ -55,7 +55,7 @@ test('prompt context exposes exact voice tokens and scopes each shot to bound, l
 })
 
 test('single, batch and initial-breakdown agents get voice rules in every content language', async () => {
-  for (const language of ['zh', 'en', 'ja', 'ko'] as const) {
+  for (const language of ['zh', 'en', 'ja', 'ko', 'th'] as const) {
     const rc = buildAgentRequestContext({ dramaId: drama.id, episodeId: ep.id, language })
     for (const type of ['prompt_generator', 'storyboard_breaker']) {
       const instructions = String(await agentRegistry[type].getInstructions({ requestContext: rc }))

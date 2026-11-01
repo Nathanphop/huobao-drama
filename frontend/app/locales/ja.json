@@ -284,6 +284,7 @@
       "langNameEn": "英語",
       "langNameJa": "日本語",
       "langNameKo": "韓国語",
+      "langNameTh": "タイ語",
       "unifiedSwitchWarning": "{lang} に切替しました。UI と AI コンテンツ言語が同期され、まもなく再読み込みします…"
     },
     "ai": {

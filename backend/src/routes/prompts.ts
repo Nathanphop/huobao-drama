@@ -1,7 +1,7 @@
 /**
  * Agent prompt 管理路由 — 读写 workspace/prompts/<agent_type>[.<lang>].md
  * 文件操作 jail 在 backend/workspace/ 目录内（仿 skills 路由）
- * ?lang=en/ja/ko 读写语言变体；zh/缺省为基础版（历史行为）
+ * ?lang=en/ja/ko/th 读写语言变体；zh/缺省为基础版（历史行为）
  */
 import { Hono } from 'hono'
 import { success, badRequest } from '../utils/response.js'
@@ -13,7 +13,7 @@ const app = new Hono()
 const fsm = () => skillsManagerWorkspace.filesystem!
 
 const checkType = (type: string) => validAgentTypes.includes(type)
-const LANGS = ['zh', 'en', 'ja', 'ko']
+const LANGS = ['zh', 'en', 'ja', 'ko', 'th']
 const normalizeLang = (v?: string) => (v && LANGS.includes(v) ? v : 'zh')
 
 // GET /prompts — 列出全部 Agent 的 prompt 状态（基础版口径；name/model 只属于基础版）
