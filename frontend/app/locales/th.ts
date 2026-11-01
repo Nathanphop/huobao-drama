@@ -629,6 +629,8 @@ const th = {
       setMainFailed: 'ตั้งค่าไม่สำเร็จ',
       download: 'ดาวน์โหลด',
       emptyGenerating: 'กำลังสร้างวิดีโอ…',
+      generatingProgress: 'กำลังสร้างวิดีโอ… {p}%',
+      emptyGeneratingDesc: 'เมื่อสร้างเสร็จแล้วจะแสดงตัวอย่างวิดีโอที่นี่',
       emptyNoVideo: 'ยังไม่ได้สร้างวิดีโอ',
       generateVideo: 'สร้างวิดีโอ',
       history: 'ประวัติวิดีโอ',

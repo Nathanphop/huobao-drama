@@ -784,6 +784,7 @@
       "setMainFailed": "Setting failed",
       "download": "Download",
       "emptyGenerating": "Video generating…",
+      "generatingProgress": "Generating video… {p}%",
       "emptyNoVideo": "No video generated yet",
       "emptyGeneratingDesc": "Once generated, it can be previewed here",
       "emptyNoVideoDesc": "Click the button below to generate a video for this shot",

@@ -738,9 +738,20 @@
                   class="video-player-video"
                 />
                 <div v-else class="video-player-empty">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                  <div
+                    v-if="videoTaskState(selectedSb) === 'pending'"
+                    class="video-generation-progress"
+                    :style="{ '--video-progress': `${videoTaskProgress(selectedSb) * 3.6}deg` }"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    :aria-valuenow="videoTaskProgress(selectedSb)"
+                  >
+                    <span>{{ videoTaskProgress(selectedSb) }}%</span>
+                  </div>
+                  <svg v-else width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                   <div class="video-player-empty-copy">
-                    <div class="video-player-empty-title">{{ videoAwaitingDelivery(selectedSb) ? t('episode.recovery.awaitingDelivery') : videoTaskState(selectedSb) === 'pending' ? t('episode.vid.emptyGenerating') : t('episode.vid.emptyNoVideo') }}</div>
+                    <div class="video-player-empty-title">{{ videoAwaitingDelivery(selectedSb) ? t('episode.recovery.awaitingDelivery') : videoTaskState(selectedSb) === 'pending' ? t('episode.vid.generatingProgress', { p: videoTaskProgress(selectedSb) }) : t('episode.vid.emptyNoVideo') }}</div>
                     <div class="video-player-empty-desc">{{ videoAwaitingDelivery(selectedSb) || canRecoverVideo(selectedSb?.id) ? t('episode.recovery.restoreHint') : videoTaskState(selectedSb) === 'pending' ? t('episode.vid.emptyGeneratingDesc') : t('episode.vid.emptyNoVideoDesc') }}</div>
                   </div>
                   <button
@@ -2042,11 +2053,43 @@ function videoTaskStatusLabel(sb) {
   if (state === 'pending') {
     const stage = latestVideoTask(sb.id)?.stage
     return stage === 'downloading' ? t('episode.recovery.downloading')
-      : stage === 'transferring' ? t('episode.recovery.transferring') : t('episode.status.generating')
+      : stage === 'transferring' ? t('episode.recovery.transferring')
+        : t('episode.vid.generatingProgress', { p: videoTaskProgress(sb) })
   }
   if (state === 'failed' && latestVideoTask(sb?.id)?.result_url) return t('episode.recovery.localDownloadFailed')
   if (state === 'failed') return t('episode.status.failed')
   return t('episode.status.todo')
+}
+
+function videoTaskProgress(sb) {
+  const task = latestVideoTask(sb?.id)
+  if (!task) return isPendingVideo(sb?.id) ? 2 : 0
+  if (task.status === 'completed') return 100
+  if (task.status === 'failed') return 0
+
+  const reported = Number(task.progress ?? task.progress_percent)
+  if (Number.isFinite(reported) && reported > 0) return Math.max(1, Math.min(99, Math.round(reported)))
+
+  const stage = String(task.stage || 'submitting')
+  if (stage === 'saving') return 99
+  if (stage === 'downloading') return 97
+  if (stage === 'transferring') return 94
+
+  const createdAt = new Date(task.created_at || task.createdAt || Date.now()).getTime()
+  const elapsedSeconds = Math.max(0, (Date.now() - createdAt) / 1000)
+  const provider = String(task.provider || '').toLowerCase()
+  const model = String(task.model || '').toLowerCase()
+  let estimatedSeconds = 180
+  if (provider === 'google_flow') {
+    estimatedSeconds = model.includes('fast') ? 90
+      : model.includes('quality') ? 210
+        : model.includes('omni') ? 140 : 120
+  } else if (provider === 'volcengine') estimatedSeconds = 150
+  else if (provider === 'minimax') estimatedSeconds = 210
+  else if (provider === 'aliyun') estimatedSeconds = 240
+
+  const stageFloor = stage === 'polling' ? 12 : 3
+  return Math.max(stageFloor, Math.min(93, Math.round(3 + (elapsedSeconds / estimatedSeconds) * 90)))
 }
 
 function videoTaskActionLabel(sb) {
@@ -4932,6 +4975,29 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
 .video-player-empty-title { color: var(--text-1); font-size: 12.5px; font-weight: 700; }
 .video-player-empty-desc { margin-top: 2px; font-size: 11px; line-height: 1.5; }
 .video-player-empty-action { flex-shrink: 0; margin-top: 4px; }
+.video-generation-progress {
+  --video-progress: 0deg;
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) var(--video-progress), var(--overlay-track) 0);
+  color: var(--text-0);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 0 22px var(--accent-glow);
+}
+.video-generation-progress::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--media-surface);
+}
+.video-generation-progress span { position: relative; z-index: 1; }
 .video-task-list {
   min-height: 0;
   overflow: hidden;
