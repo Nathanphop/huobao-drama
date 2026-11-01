@@ -209,6 +209,7 @@
       "resolution": "영상 해상도",
       "resolutionPlaceholder": "해상도 선택",
       "resolutionHint": "생성 후 이 화의 영상은 이 해상도로 생성되며, 이후 화 카드에서도 변경할 수 있습니다.",
+      "resolutionModel": "{provider} · {model}에서 사용 가능",
       "lockCopy": "생성 시 현재 활성화된 이미지·영상 생성 기능이 고정됩니다.",
       "creating": "생성 중...",
       "create": "생성",

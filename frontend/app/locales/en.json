@@ -209,6 +209,7 @@
       "resolution": "Video resolution",
       "resolutionPlaceholder": "Select resolution",
       "resolutionHint": "Videos of this episode are generated at this resolution; you can still change it on the episode card later.",
+      "resolutionModel": "Available for {provider} · {model}",
       "lockCopy": "The currently active image and video generation capabilities will be locked on creation.",
       "creating": "Creating...",
       "create": "Create",

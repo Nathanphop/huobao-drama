@@ -112,11 +112,11 @@
           >
             <template #trigger>
               <button type="button" :class="['tag', 'ep-res-btn']" :title="t('detail.ep.resTitle')">
-                {{ epResolution(ep) }}
+                {{ epResolutionLabel(ep) }}
               </button>
             </template>
             <AppMenuItem
-              v-for="r in resolutionOptions"
+              v-for="r in resolutionOptionsForEpisode(ep)"
               :key="r.value"
               :selected="epResolution(ep) === r.value"
               @click="setEpisodeResolution(ep, r.value)"
@@ -539,8 +539,9 @@
           </label>
           <label class="field">
             <span class="field-label">{{ t('detail.epCreate.resolution') }}</span>
-            <BaseSelect v-model="newEpisodeResolution" :options="resolutionOptions" :placeholder="t('detail.epCreate.resolutionPlaceholder')" />
+            <BaseSelect v-model="newEpisodeResolution" :options="createResolutionOptions" :placeholder="t('detail.epCreate.resolutionPlaceholder')" />
             <span class="field-hint">{{ t('detail.epCreate.resolutionHint') }}</span>
+            <span v-if="activeVideoConfig" class="field-hint mono">{{ t('detail.epCreate.resolutionModel', { provider: activeVideoConfig.name || activeVideoConfig.provider, model: activeVideoModel }) }}</span>
           </label>
         </div>
         <div class="dialog-foot">
@@ -567,7 +568,8 @@
 import { toast } from 'vue-sonner'
 import { toastError } from '~/composables/useToast'
 import { useI18n } from 'vue-i18n'
-import { dramaAPI, episodeAPI, characterAPI, sceneAPI, propAPI, uploadAPI } from '~/composables/useApi'
+import { dramaAPI, episodeAPI, characterAPI, sceneAPI, propAPI, uploadAPI, aiConfigAPI } from '~/composables/useApi'
+import { OFFICIAL_VIDEO_PROVIDERS, normalizeVideoResolution, preferredVideoResolution, videoResolutionOptions } from '~/utils/video-resolution'
 import BaseSelect from '~/components/BaseSelect.vue'
 
 const { t, locale } = useI18n()
@@ -581,19 +583,60 @@ const newEpisodeTitle = ref('')
 const episodeToDelete = ref(null)
 const deletingEpisode = ref(false)
 
-// 视频分辨率：创建集时固定（持久化到 episodes.resolution），集卡片上可修改
-const resolutionOptions = computed(() => ([
-  { label: t('detail.ep.res720'), value: '720p' },
-  { label: t('detail.ep.res480'), value: '480p' },
-]))
+// 视频分辨率：按创建时将锁定的视频配置/默认模型显示厂商原生档位。
+const videoConfigs = ref([])
+
+function configModels(config) {
+  const raw = config?.model
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [parsed].filter(Boolean)
+  } catch {
+    return [raw].filter(Boolean)
+  }
+}
+
+const activeVideoConfig = computed(() => [...videoConfigs.value]
+  .filter(config => config.is_active && OFFICIAL_VIDEO_PROVIDERS.has(config.provider))
+  .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0] || null)
+const activeVideoModel = computed(() => configModels(activeVideoConfig.value)[0] || '')
+
+function selectOptionsForConfig(config) {
+  const model = configModels(config)[0] || ''
+  return videoResolutionOptions(config?.provider, model).map(option => ({
+    value: option.value,
+    label: `${option.nativeLabel} · ${t(`episode.resolution.${option.quality}`)}`,
+  }))
+}
+
+const createResolutionOptions = computed(() => selectOptionsForConfig(activeVideoConfig.value))
 const newEpisodeResolution = ref('720p')
 const epResMenuId = ref(null)
 
-function epResolution(ep) { return ep.resolution === '480p' ? '480p' : '720p' }
+function videoConfigForEpisode(ep) {
+  const configId = ep.video_config_id || ep.videoConfigId
+  return videoConfigs.value.find(config => config.id === configId) || activeVideoConfig.value
+}
+
+function resolutionOptionsForEpisode(ep) {
+  return selectOptionsForConfig(videoConfigForEpisode(ep))
+}
+
+function epResolution(ep) {
+  const config = videoConfigForEpisode(ep)
+  return normalizeVideoResolution(ep.resolution, config?.provider, configModels(config)[0])
+}
+
+function epResolutionLabel(ep) {
+  const value = epResolution(ep)
+  return resolutionOptionsForEpisode(ep).find(option => option.value === value)?.label.split(' · ')[0] || value
+}
 
 async function setEpisodeResolution(ep, resolution) {
   epResMenuId.value = null
-  if (epResolution(ep) === resolution) return
+  if (ep.resolution === resolution) return
   const prev = ep.resolution
   ep.resolution = resolution
   try {
@@ -649,9 +692,17 @@ async function load() {
   }
 }
 
+async function loadVideoConfigs() {
+  try {
+    videoConfigs.value = await aiConfigAPI.list('video') || []
+  } catch (e) {
+    toastError(e)
+  }
+}
+
 function openAddEpisode() {
   newEpisodeTitle.value = ''
-  newEpisodeResolution.value = '720p'
+  newEpisodeResolution.value = preferredVideoResolution(activeVideoConfig.value?.provider, activeVideoModel.value)
   addDialog.value = true
 }
 
@@ -662,6 +713,7 @@ async function addEpisode() {
     await episodeAPI.create({
       drama_id: dramaId,
       title: newEpisodeTitle.value || undefined,
+      video_config_id: activeVideoConfig.value?.id,
       resolution: newEpisodeResolution.value,
     })
     toast.success(t('detail.epCreate.added'))
@@ -922,7 +974,7 @@ async function saveEdit() {
   }
 }
 
-onMounted(load)
+onMounted(() => { load(); loadVideoConfigs() })
 </script>
 
 <style scoped>

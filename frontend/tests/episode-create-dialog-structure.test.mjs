@@ -5,62 +5,54 @@ import assert from 'node:assert/strict'
 const root = new URL('..', import.meta.url)
 const read = (path) => readFileSync(new URL(path, root), 'utf8')
 
-test('add episode dialog asks for a title and a fixed video resolution', () => {
-  const page = read('app/pages/drama/[id]/index.vue')
+test('episode creation derives resolution choices from the active video model', () => {
+  const page = read('app/views/drama/detail.vue')
 
-  // 删除图片/视频服务选择 UI
-  assert.doesNotMatch(page, /图片生成服务/)
-  assert.doesNotMatch(page, /视频生成服务/)
-  assert.doesNotMatch(page, /svc-card/)
-  assert.doesNotMatch(page, /svc-pick/)
-  assert.doesNotMatch(page, /imageConfigs|videoConfigs/)
-  assert.doesNotMatch(page, /配置将锁定/)
-  assert.doesNotMatch(page, /创建并锁定配置/)
-
-  // 保留标题输入与提交
   assert.match(page, /v-model="newEpisodeTitle"/)
-  assert.match(page, /placeholder="默认按集数自动命名"/)
-  assert.match(page, /留空时会自动按集数命名/)
-  assert.match(page, /创建后自动锁定当前启用的图片与视频生成能力/)
-  assert.match(page, /creatingEpisode \? '创建中\.\.\.' : '创建'/)
-
-  // 视频分辨率：创建集时固定（480p/720p，默认 720p）
-  assert.match(page, /视频分辨率/)
   assert.match(page, /v-model="newEpisodeResolution"/)
-  assert.match(page, /const resolutionOptions = \[/)
-  assert.match(page, /720p · 高清/)
-  assert.match(page, /480p · 流畅/)
-  assert.match(page, /newEpisodeResolution = ref\('720p'\)/)
-  assert.match(page, /之后仍可在集卡片上修改/)
+  assert.match(page, /:options="createResolutionOptions"/)
+  assert.match(page, /activeVideoConfig/)
+  assert.match(page, /activeVideoModel/)
+  assert.match(page, /videoResolutionOptions\(config\?\.provider, model\)/)
+  assert.match(page, /detail\.epCreate\.resolutionModel/)
 })
 
-test('addEpisode posts drama_id, title and resolution', () => {
-  const page = read('app/pages/drama/[id]/index.vue')
+test('video resolution profiles expose native tiers for every official integration', () => {
+  const profiles = read('app/utils/video-resolution.ts')
 
-  const addEpisodeBody = page.slice(page.indexOf('async function addEpisode'), page.indexOf('onMounted(load)'))
+  assert.match(profiles, /GOOGLE_FLOW[\s\S]*'360p'[\s\S]*'720p'/)
+  assert.match(profiles, /SEEDANCE[\s\S]*'480p'[\s\S]*'720p'/)
+  assert.match(profiles, /MINIMAX[\s\S]*nativeLabel: '768P'[\s\S]*nativeLabel: '2K'/)
+  assert.match(profiles, /WAN[\s\S]*'480p'[\s\S]*'720p'[\s\S]*'1080p'/)
+  assert.match(profiles, /providerId === 'google_flow'/)
+  assert.match(profiles, /modelId\.startsWith\('wan3\.0-video'\)/)
+})
+
+test('addEpisode locks the same video config used to calculate resolutions', () => {
+  const page = read('app/views/drama/detail.vue')
+  const addEpisodeBody = page.slice(page.indexOf('async function addEpisode'), page.indexOf('async function confirmDelEpisode'))
+
   assert.match(addEpisodeBody, /drama_id: dramaId/)
   assert.match(addEpisodeBody, /title: newEpisodeTitle\.value/)
+  assert.match(addEpisodeBody, /video_config_id: activeVideoConfig\.value\?\.id/)
   assert.match(addEpisodeBody, /resolution: newEpisodeResolution\.value/)
-  assert.doesNotMatch(addEpisodeBody, /image_config_id/)
-  assert.doesNotMatch(addEpisodeBody, /video_config_id/)
-  assert.doesNotMatch(addEpisodeBody, /aiConfigAPI/)
 })
 
-test('episode card resolution is editable via a dropdown persisted to episodes.resolution', () => {
-  const page = read('app/pages/drama/[id]/index.vue')
+test('episode cards use their locked provider resolution profile', () => {
+  const page = read('app/views/drama/detail.vue')
 
-  // 卡片上的分辨率标签 + 下拉修改
-  assert.match(page, /点击修改本集视频分辨率/)
-  assert.match(page, /epResMenuId/)
-  assert.match(page, /function epResolution\(ep\) \{ return ep\.resolution === '480p' \? '480p' : '720p' \}/)
-  assert.match(page, /function setEpisodeResolution/)
+  assert.match(page, /resolutionOptionsForEpisode\(ep\)/)
+  assert.match(page, /videoConfigForEpisode\(ep\)/)
+  assert.match(page, /normalizeVideoResolution\(ep\.resolution, config\?\.provider/)
   assert.match(page, /episodeAPI\.update\(ep\.id, \{ resolution \}\)/)
+  assert.match(page, /epResolutionLabel\(ep\)/)
 })
 
-test('add episode dialog does not preload config lists', () => {
-  const page = read('app/pages/drama/[id]/index.vue')
+test('active config selection mirrors backend priority rules', () => {
+  const page = read('app/views/drama/detail.vue')
 
-  assert.doesNotMatch(page, /loadConfigs/)
-  assert.doesNotMatch(page, /aiConfigAPI\.list/)
-  assert.doesNotMatch(page, /canCreateEpisode/)
+  assert.match(page, /aiConfigAPI\.list\('video'\)/)
+  assert.match(page, /config\.is_active && OFFICIAL_VIDEO_PROVIDERS\.has\(config\.provider\)/)
+  assert.match(page, /sort\(\(a, b\) => \(b\.priority \|\| 0\) - \(a\.priority \|\| 0\)\)/)
+  assert.match(page, /preferredVideoResolution\(activeVideoConfig\.value\?\.provider, activeVideoModel\.value\)/)
 })

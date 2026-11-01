@@ -209,6 +209,7 @@
       "resolution": "動画解像度",
       "resolutionPlaceholder": "解像度を選択",
       "resolutionHint": "作成後、この話の動画はこの解像度で生成されます。後から話カードでも変更できます。",
+      "resolutionModel": "{provider} · {model} で利用可能",
       "lockCopy": "作成時に現在有効な画像・動画生成能力がロックされます。",
       "creating": "作成中...",
       "create": "作成",

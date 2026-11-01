@@ -209,6 +209,7 @@
       "resolution": "视频分辨率",
       "resolutionPlaceholder": "选择分辨率",
       "resolutionHint": "创建后本集视频按此分辨率生成，之后仍可在集卡片上修改。",
+      "resolutionModel": "适用于 {provider} · {model}",
       "lockCopy": "创建后自动锁定当前启用的图片与视频生成能力。",
       "creating": "创建中...",
       "create": "创建",

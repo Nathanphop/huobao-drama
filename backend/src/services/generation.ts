@@ -804,7 +804,7 @@ function resolvePublicMediaUrls(refs: string[] | null | undefined, kind: 'video'
 
 function normalizeStoredVideoResolution(resolution: string | null | undefined): string | undefined {
   const value = String(resolution || '').trim().toLowerCase()
-  if (value === '480p' || value === '720p' || value === '1080p') return value
+  if (value === '360p' || value === '480p' || value === '720p' || value === '1080p') return value
   if (value === '2k') return '2K'
   return undefined
 }

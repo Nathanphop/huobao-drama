@@ -55,16 +55,17 @@ test('video resolution is fixed per episode, editable, and locked into video tas
   const tasks = read('src/routes/tasks.ts')
   const service = read('src/services/generation.ts')
 
-  // 创建集时固定（默认 720p，仅接受 480p/720p）
-  assert.match(episodes, /\['480p', '720p', '1080p'\]\.includes\(body\.resolution\)/)
+  // 创建集时固定（默认 720p；360p 供 Google Flow 使用）
+  assert.match(episodes, /\['360p', '480p', '720p', '1080p'\]\.includes\(body\.resolution\)/)
   // PUT 可修改，白名单校验
   assert.match(episodes, /'status', 'resolution'\]/)
-  assert.match(episodes, /resolution 只支持 480p \/ 720p/)
+  assert.match(episodes, /resolution 只支持 360p \/ 480p \/ 720p \/ 1080p/)
   // 视频任务锁定集的分辨率（优先于请求体）
   assert.match(tasks, /episodeResolution = ep\.resolution/)
   assert.match(tasks, /resolution: episodeResolution \|\| videoBody!\.resolution/)
   // 服务落入 params 并传给适配器
   assert.match(service, /resolution: normalizeStoredVideoResolution\(params\.resolution\)/)
+  assert.match(service, /value === '360p'/)
   assert.match(service, /resolution: params\.resolution,/)
 })
 

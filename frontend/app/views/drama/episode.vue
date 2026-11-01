@@ -1458,6 +1458,7 @@ import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propA
 import { startTour, autoTour } from '~/composables/useTour'
 import { useAgent } from '~/composables/useAgent'
 import { resolveTextModelSelection } from '~/utils/text-model-selection'
+import { normalizeVideoResolution, videoResolutionOptions } from '~/utils/video-resolution'
 import { toastError, mapError, MODERATION_RE } from '~/composables/useToast'
 import LocaleSwitcher from '~/components/LocaleSwitcher.vue'
 
@@ -2113,33 +2114,26 @@ function isNarratorCharacter(char) {
 
 const visualChars = computed(() => chars.value.filter(c => !isNarratorCharacter(c)))
 const lockedVideoConfigId = computed(() => episode.value?.video_config_id || episode.value?.videoConfigId || null)
-// 集视频分辨率：顶栏直接修改（持久化 episodes.resolution，生成任务按此值锁定）。
-// 内部统一存 480p/720p/1080p 三档，界面按当前选中的视频模型显示厂商原生档位
-// （Seedance 480p/720p、MiniMax 768P/2K、Wan 3.0 480P/720P/1080P），适配器再映射为官方枚举
-const RESOLUTION_TIERS = {
-  volcengine: ['480p', '720p'],
-  minimax: ['720p', '1080p'],
-  aliyun: ['480p', '720p', '1080p'],
-}
-const RESOLUTION_DISPLAY = {
-  volcengine: { '480p': '480p', '720p': '720p', '1080p': '720p' },
-  minimax: { '480p': '768P', '720p': '768P', '1080p': '2K' },
-  aliyun: { '480p': '480P', '720p': '720P', '1080p': '1080P' },
-}
-const resolutionProvider = computed(() => RESOLUTION_TIERS[selectedVideoConfig.value?.provider] ? selectedVideoConfig.value.provider : 'volcengine')
-const resolutionOptions = computed(() => RESOLUTION_TIERS[resolutionProvider.value].map(key => ({
-  key,
-  model: `${RESOLUTION_DISPLAY[resolutionProvider.value][key]} · ${t(`episode.resolution.${key === '480p' ? 'smooth' : key === '720p' ? 'hd' : 'uhd'}`)}`,
+// 集视频分辨率：按当前选中的 provider + model 显示厂商原生档位，并持久化内部档位。
+const nativeResolutionOptions = computed(() => {
+  const config = selectedVideoConfig.value
+  const model = bareModelName(videoModel.value) || configModels(config)[0] || ''
+  return videoResolutionOptions(config?.provider, model)
+})
+const resolutionOptions = computed(() => nativeResolutionOptions.value.map(option => ({
+  key: option.value,
+  model: `${option.nativeLabel} · ${t(`episode.resolution.${option.quality}`)}`,
 })))
 const episodeResolution = computed({
   get: () => {
-    const v = episode.value?.resolution
-    return resolutionOptions.value.some(o => o.key === v) ? v : '720p'
+    const config = selectedVideoConfig.value
+    const model = bareModelName(videoModel.value) || configModels(config)[0] || ''
+    return normalizeVideoResolution(episode.value?.resolution, config?.provider, model)
   },
   set: (val) => { void changeEpisodeResolution(val) },
 })
 async function changeEpisodeResolution(val) {
-  if (!episode.value || val === episodeResolution.value) return
+  if (!episode.value || val === episode.value.resolution) return
   const prev = episode.value.resolution
   episode.value.resolution = val
   const label = resolutionOptions.value.find(o => o.key === val)?.model || val
@@ -2201,6 +2195,13 @@ const selectedVideoConfig = computed(() => {
     .filter(config => config.is_active)
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0]
 })
+watch([() => selectedVideoConfig.value?.id, videoModel], () => {
+  if (!episode.value) return
+  const config = selectedVideoConfig.value
+  const model = bareModelName(videoModel.value) || configModels(config)[0] || ''
+  const normalized = normalizeVideoResolution(episode.value.resolution, config?.provider, model)
+  if (normalized !== episode.value.resolution) void changeEpisodeResolution(normalized)
+})
 const isWan3Video = computed(() => selectedVideoConfig.value?.provider === 'aliyun'
   || bareModelName(videoModel.value).startsWith('wan3.0-video'))
 
@@ -2217,7 +2218,7 @@ const episodeResolutionLabel = computed(() =>
   resolutionOptions.value.find(o => o.key === episodeResolution.value)?.model || episodeResolution.value)
 // 短档位标签（480p / 768P / 2K 等厂商原生档位），用于底部生效配置小结
 const episodeResolutionShort = computed(() =>
-  RESOLUTION_DISPLAY[resolutionProvider.value][episodeResolution.value] || episodeResolution.value)
+  nativeResolutionOptions.value.find(option => option.value === episodeResolution.value)?.nativeLabel || episodeResolution.value)
 const effectiveVideoDuration = computed(() => Number(selectedSb.value?.duration || 10))
 const batchVideoTotalDuration = computed(() =>
   batchVideoConfirm.value.targets.reduce((sum, sb) => sum + (Number(sb.duration) || 5), 0))
