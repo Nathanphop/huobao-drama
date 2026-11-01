@@ -638,11 +638,15 @@ async function handleVideoCompleteBuffer(record: SysTaskRecord, buffer: Buffer, 
 
 async function rememberGoogleFlowProject(config: AIConfig, projectUrl: unknown): Promise<void> {
   if (!config.id || typeof projectUrl !== 'string' || !projectUrl.includes('flow.google.com')) return
-  if (config.flowProjectUrl === projectUrl) return
   const [row] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, config.id))
   if (!row) return
   const settings = parseConfigSettings(row.settings)
   settings.flowProjectUrl = projectUrl
+  const projectUrls = settings.flowProjectUrls && typeof settings.flowProjectUrls === 'object' && !Array.isArray(settings.flowProjectUrls)
+    ? { ...settings.flowProjectUrls }
+    : {}
+  projectUrls[String(config.flowAuthuser || '0')] = projectUrl
+  settings.flowProjectUrls = projectUrls
   await db.update(schema.aiServiceConfigs)
     .set({ settings: JSON.stringify(settings), updatedAt: now() })
     .where(eq(schema.aiServiceConfigs.id, config.id))

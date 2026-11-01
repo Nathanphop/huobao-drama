@@ -3,7 +3,7 @@
     <span class="model-select-label">{{ label }}</span>
     <AppMenu v-model:open="isOpen" :min-width="280">
       <template #trigger>
-        <button type="button" class="model-select-trigger" :class="{ open: isOpen }">
+        <button type="button" class="model-select-trigger" :class="{ open: isOpen }" :disabled="disabled">
           <img v-if="triggerIcon" :src="triggerIcon" class="model-select-icon" alt="" />
           <span v-else-if="currentOption?.provider" class="model-select-provider">{{ currentOption.provider }}</span>
           <span class="model-select-value">{{ currentLabel }}</span>
@@ -44,6 +44,7 @@ const props = defineProps({
   defaultLabel: { type: String, default: '' },      // 缺省回退 t('common.default')
   showConfig: { type: Boolean, default: false },    // 多配置时显示来源配置名
   hideDefault: { type: Boolean, default: false },   // 无「默认」语义的选择器（如分辨率）隐藏默认项
+  disabled: { type: Boolean, default: false },      // 异步切换配置时禁止重复选择
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -53,7 +54,7 @@ const isOpen = ref(false)
 
 const effectiveDefaultLabel = computed(() => props.defaultLabel || t('common.default'))
 const currentOption = computed(() => props.options.find(o => (o.key || o.model) === props.modelValue) || null)
-const currentLabel = computed(() => currentOption.value?.model || effectiveDefaultLabel.value)
+const currentLabel = computed(() => currentOption.value?.triggerLabel || currentOption.value?.model || effectiveDefaultLabel.value)
 // 默认 = 首个选项；未显式选模型时也展示默认模型的厂商图标（与 defaultLabel 取 options[0] 同口径）
 // 图标按模型名推断（网关 provider=openai 但模型实为 deepseek 等场景），回退 provider
 const defaultIcon = computed(() => modelIconUrl(props.options[0]?.provider, props.options[0]?.model))
@@ -95,6 +96,7 @@ function pick(model) {
   transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
 }
 .model-select-trigger:hover { border-color: var(--border-hover); }
+.model-select-trigger:disabled { cursor: wait; opacity: .68; }
 .model-select-trigger.open,
 .model-select-trigger:focus-visible {
   border-color: var(--border-focus);

@@ -518,6 +518,9 @@
     },
     "credits": {
       "flow": "Flow credits",
+      "account": "Flow account",
+      "accountSwitched": "Google Flow account switched to {account}",
+      "accountSwitchFailed": "Could not switch the Google Flow account",
       "balanceCompact": "Flow {n}",
       "balance": "{n} Google Flow credits remaining",
       "breakdown": "subscription {subscription}, top-up {topUp}",

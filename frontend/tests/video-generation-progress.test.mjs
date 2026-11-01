@@ -34,3 +34,22 @@ test('video workbench displays the live Google Flow credit balance and observed 
   assert.match(english, /"usedObserved": "\{n\} credits used since this page was opened"/)
   assert.match(thai, /usedObserved: 'ใช้จริง \{n\} เครดิตนับตั้งแต่เปิดหน้านี้'/)
 })
+
+test('workbench switches the real Google Flow account for image and video configs', () => {
+  const episode = read('app/views/drama/episode.vue')
+  const modelSelect = read('app/components/ModelSelect.vue')
+  const english = read('app/locales/en.json')
+  const thai = read('app/locales/th.ts')
+
+  assert.match(episode, /googleFlowAPI\.status\(\)/)
+  assert.match(episode, /googleFlowAPI\.refresh\(next\)/)
+  assert.match(episode, /googleFlowAPI\.credits\(next, '', true\)/)
+  assert.match(episode, /config\.provider === 'google_flow'/)
+  assert.match(episode, /flow_authuser: next/)
+  assert.match(episode, /flow_project_urls: projectUrls/)
+  assert.match(episode, /flow_project_url: String\(projectUrls\[next\] \|\| ''\)/)
+  assert.match(episode, /huobao:google-flow:authuser/)
+  assert.match(modelSelect, /currentOption\.value\?\.triggerLabel/)
+  assert.match(english, /"account": "Flow account"/)
+  assert.match(thai, /account: 'บัญชี Flow'/)
+})

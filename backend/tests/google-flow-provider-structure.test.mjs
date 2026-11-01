@@ -7,6 +7,7 @@ const ai = read('../src/services/ai.ts')
 const service = read('../src/services/google-flow.ts')
 const generation = read('../src/services/generation.ts')
 const route = read('../src/routes/googleFlow.ts')
+const aiConfigRoute = read('../src/routes/aiConfigs.ts')
 const schema = read('../src/db/schema.ts')
 const sqliteSchema = read('../src/db/sqlite-schema.ts')
 
@@ -62,4 +63,10 @@ test('Google Flow exposes the signed-in account credit balance from the live RPC
   assert.match(service, /topUp: Number\(result\.topUp/)
   assert.match(route, /app\.get\('\/credits'/)
   assert.match(route, /getGoogleFlowCredits\(authuser, projectUrl, force\)/)
+})
+
+test('Google Flow remembers a separate project URL for each signed-in account', () => {
+  assert.match(aiConfigRoute, /flow_project_urls: normalizeFlowProjectUrls\(settings\.flowProjectUrls\)/)
+  assert.match(aiConfigRoute, /settings\.flowProjectUrls = flowProjectUrls/)
+  assert.match(generation, /projectUrls\[String\(config\.flowAuthuser \|\| '0'\)\] = projectUrl/)
 })

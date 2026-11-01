@@ -446,6 +446,9 @@ const th = {
     model: { defaultWith: 'ค่าเริ่มต้น · {model}', notConfigured: 'ยังไม่ได้ตั้งค่า' },
     credits: {
       flow: 'เครดิต Flow',
+      account: 'บัญชี Flow',
+      accountSwitched: 'เปลี่ยนบัญชี Google Flow เป็น {account} แล้ว',
+      accountSwitchFailed: 'เปลี่ยนบัญชี Google Flow ไม่สำเร็จ',
       balanceCompact: 'Flow {n}',
       balance: 'เครดิต Google Flow คงเหลือ {n}',
       breakdown: 'เครดิตสมาชิก {subscription}, เครดิตเติม {topUp}',

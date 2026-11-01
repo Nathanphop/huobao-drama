@@ -45,8 +45,17 @@
             :default-label="t('episode.model.defaultWith', { model: videoModelOptions[0].model })"
             :show-config="videoModelMultiCfg"
           />
+          <ModelSelect
+            v-if="activeGoogleFlowConfig && flowAccountOptions.length"
+            :model-value="selectedGoogleFlowAuthuser"
+            :label="t('episode.credits.account')"
+            :options="flowAccountOptions"
+            :disabled="flowAccountSaving"
+            hide-default
+            @update:model-value="changeGoogleFlowAccount"
+          />
           <button
-            v-if="selectedVideoConfig?.provider === 'google_flow'"
+            v-if="activeGoogleFlowConfig"
             type="button"
             class="flow-credit-pill"
             :class="{ 'is-loading': flowCreditsLoading, 'has-usage': flowCreditsObservedUsed > 0 }"
@@ -2247,6 +2256,13 @@ function hasMultiConfigs(options) {
 const textModelOptions = computed(() => collectModelOptions(textConfigs.value))
 const imageModelOptions = computed(() => collectModelOptions(imageConfigs.value))
 const videoModelOptions = computed(() => collectModelOptions(videoConfigs.value))
+const selectedImageConfig = computed(() => {
+  const selected = imageModelOptions.value.find(option => option.key === imageModel.value)
+  if (selected) return imageConfigs.value.find(config => config.id === selected.configId)
+  return [...imageConfigs.value]
+    .filter(config => config.is_active)
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0]
+})
 const selectedVideoConfig = computed(() => {
   const selected = videoModelOptions.value.find(option => option.key === videoModel.value)
   if (selected) return videoConfigs.value.find(config => config.id === selected.configId)
@@ -2255,6 +2271,26 @@ const selectedVideoConfig = computed(() => {
   return [...videoConfigs.value]
     .filter(config => config.is_active)
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0]
+})
+const googleFlowAccounts = ref([])
+const selectedGoogleFlowAuthuser = ref('0')
+const flowAccountSaving = ref(false)
+const activeGoogleFlowConfig = computed(() => {
+  if (selectedVideoConfig.value?.provider === 'google_flow') return selectedVideoConfig.value
+  if (selectedImageConfig.value?.provider === 'google_flow') return selectedImageConfig.value
+  return null
+})
+const flowAccountOptions = computed(() => {
+  const options = googleFlowAccounts.value.map(account => ({
+    key: String(account.authuser),
+    model: `${account.email || account.label} · u/${account.authuser}`,
+    triggerLabel: (account.email || account.label || `u/${account.authuser}`).split('@')[0],
+  }))
+  const selected = String(selectedGoogleFlowAuthuser.value || '')
+  if (selected && !options.some(option => option.key === selected)) {
+    options.push({ key: selected, model: `Google account · u/${selected}` })
+  }
+  return options
 })
 const flowCredits = ref(null)
 const flowCreditsLoading = ref(false)
@@ -2285,8 +2321,8 @@ const flowCreditsTitle = computed(() => {
 })
 
 async function loadFlowCredits(fresh = false) {
-  const config = selectedVideoConfig.value
-  if (config?.provider !== 'google_flow') {
+  const config = activeGoogleFlowConfig.value
+  if (!config) {
     flowCredits.value = null
     flowCreditsPreviousBalance.value = null
     flowCreditsObservedUsed.value = 0
@@ -2295,8 +2331,10 @@ async function loadFlowCredits(fresh = false) {
   if (flowCreditsRequest) return flowCreditsRequest
   flowCreditsLoading.value = true
   flowCreditsRequest = googleFlowAPI.credits(
-    String(config.flow_authuser || '0'),
-    String(config.flow_project_url || ''),
+    String(selectedGoogleFlowAuthuser.value || config.flow_authuser || '0'),
+    String(config.flow_authuser || '0') === String(selectedGoogleFlowAuthuser.value || '')
+      ? String(config.flow_project_url || '')
+      : '',
     fresh,
   ).then(result => {
     const total = Number(result?.total)
@@ -2318,9 +2356,75 @@ async function loadFlowCredits(fresh = false) {
   return flowCreditsRequest
 }
 
+async function loadGoogleFlowAccounts() {
+  if (!activeGoogleFlowConfig.value) return
+  try {
+    const status = await googleFlowAPI.status()
+    googleFlowAccounts.value = Array.isArray(status?.accounts) ? status.accounts : []
+  } catch (error) {
+    googleFlowAccounts.value = []
+    console.error('Failed to load Google Flow accounts', error)
+  }
+}
+
+async function changeGoogleFlowAccount(authuser) {
+  const next = String(authuser || '')
+  if (!/^\d+$/.test(next) || flowAccountSaving.value) return
+  const previous = selectedGoogleFlowAuthuser.value
+  const targets = [...imageConfigs.value, ...videoConfigs.value]
+    .filter(config => config.provider === 'google_flow' && String(config.flow_authuser || '0') !== next)
+  if (next === previous && !targets.length) return
+
+  flowAccountSaving.value = true
+  selectedGoogleFlowAuthuser.value = next
+  try {
+    // Refresh the local Chrome session and verify this account can read Flow before
+    // changing generation configs. OAuth cookies never pass through the browser UI.
+    const status = await googleFlowAPI.refresh(next)
+    if (Array.isArray(status?.accounts) && status.accounts.length) googleFlowAccounts.value = status.accounts
+    const credits = await googleFlowAPI.credits(next, '', true)
+    await Promise.all(targets.map(config => {
+      const currentAuthuser = String(config.flow_authuser || '0')
+      const projectUrls = { ...(config.flow_project_urls || {}) }
+      if (config.flow_project_url) projectUrls[currentAuthuser] = config.flow_project_url
+      return aiConfigAPI.update(config.id, {
+        flow_authuser: next,
+        // Flow projects belong to their Google account. Restore the target account's
+        // last project, while retaining the current account's project for switching back.
+        flow_project_url: String(projectUrls[next] || ''),
+        flow_project_urls: projectUrls,
+      })
+    }))
+    for (const config of targets) {
+      const currentAuthuser = String(config.flow_authuser || '0')
+      const projectUrls = { ...(config.flow_project_urls || {}) }
+      if (config.flow_project_url) projectUrls[currentAuthuser] = config.flow_project_url
+      config.flow_authuser = next
+      config.flow_project_url = String(projectUrls[next] || '')
+      config.flow_project_urls = projectUrls
+    }
+    try { localStorage.setItem('huobao:google-flow:authuser', next) } catch {}
+    flowCreditsObservedUsed.value = 0
+    flowCreditsPreviousBalance.value = Number(credits?.total)
+    flowCredits.value = credits
+    toast.success(t('episode.credits.accountSwitched', {
+      account: googleFlowAccounts.value.find(account => String(account.authuser) === next)?.email || `u/${next}`,
+    }))
+  } catch (error) {
+    selectedGoogleFlowAuthuser.value = previous
+    toastError(error, { fallback: 'episode.credits.accountSwitchFailed' })
+  } finally {
+    flowAccountSaving.value = false
+  }
+}
+
 watch(
-  [() => selectedVideoConfig.value?.id, () => selectedVideoConfig.value?.flow_authuser],
+  [() => activeGoogleFlowConfig.value?.id, () => activeGoogleFlowConfig.value?.flow_authuser],
   () => {
+    if (activeGoogleFlowConfig.value) {
+      selectedGoogleFlowAuthuser.value = String(activeGoogleFlowConfig.value.flow_authuser || '0')
+      void loadGoogleFlowAccounts()
+    }
     flowCredits.value = null
     flowCreditsPreviousBalance.value = null
     flowCreditsObservedUsed.value = 0
@@ -3614,6 +3718,10 @@ async function loadConfigs() {
 onMounted(async () => {
   await refresh()
   await loadConfigs()
+  if (activeGoogleFlowConfig.value) {
+    selectedGoogleFlowAuthuser.value = String(activeGoogleFlowConfig.value.flow_authuser || '0')
+    await loadGoogleFlowAccounts()
+  }
   await loadFlowCredits()
   syncExtractStatus()
   flowCreditsTimer = setInterval(() => { void loadFlowCredits() }, 30_000)

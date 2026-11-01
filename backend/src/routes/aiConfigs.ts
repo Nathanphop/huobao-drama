@@ -28,7 +28,23 @@ function withParsedFields(r: any) {
     temperature: parseConfigTemperature(r.settings),
     flow_authuser: typeof settings.flowAuthuser === 'string' ? settings.flowAuthuser : '',
     flow_project_url: typeof settings.flowProjectUrl === 'string' ? settings.flowProjectUrl : '',
+    flow_project_urls: normalizeFlowProjectUrls(settings.flowProjectUrls),
   }
+}
+
+function normalizeFlowProjectUrls(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const result: Record<string, string> = {}
+  for (const [authuser, projectUrl] of Object.entries(value)) {
+    if (!/^\d+$/.test(authuser) || typeof projectUrl !== 'string') continue
+    try {
+      const url = new URL(projectUrl)
+      if (url.origin === 'https://flow.google.com') result[authuser] = url.toString()
+    } catch {
+      // Ignore malformed or non-Flow project URLs.
+    }
+  }
+  return result
 }
 
 function bearerHeaders(apiKey?: string, withJson = false) {
@@ -156,6 +172,8 @@ app.post('/', async (c) => {
   if (temperature !== null) settings.temperature = temperature
   if (typeof body.flow_authuser === 'string' && /^\d+$/.test(body.flow_authuser)) settings.flowAuthuser = body.flow_authuser
   if (typeof body.flow_project_url === 'string' && body.flow_project_url.trim()) settings.flowProjectUrl = body.flow_project_url.trim()
+  const flowProjectUrls = normalizeFlowProjectUrls(body.flow_project_urls)
+  if (Object.keys(flowProjectUrls).length) settings.flowProjectUrls = flowProjectUrls
 
   const res = await db.insert(schema.aiServiceConfigs).values({
     serviceType: body.service_type,
@@ -325,7 +343,7 @@ app.put('/:id', async (c) => {
     else settings.temperature = temperature
     updates.settings = Object.keys(settings).length ? JSON.stringify(settings) : null
   }
-  if ('flow_authuser' in body || 'flow_project_url' in body) {
+  if ('flow_authuser' in body || 'flow_project_url' in body || 'flow_project_urls' in body) {
     const settings = parseConfigSettings(updates.settings ?? existing.settings)
     if ('flow_authuser' in body) {
       if (typeof body.flow_authuser === 'string' && /^\d+$/.test(body.flow_authuser)) settings.flowAuthuser = body.flow_authuser
@@ -334,6 +352,11 @@ app.put('/:id', async (c) => {
     if ('flow_project_url' in body) {
       if (typeof body.flow_project_url === 'string' && body.flow_project_url.trim()) settings.flowProjectUrl = body.flow_project_url.trim()
       else delete settings.flowProjectUrl
+    }
+    if ('flow_project_urls' in body) {
+      const flowProjectUrls = normalizeFlowProjectUrls(body.flow_project_urls)
+      if (Object.keys(flowProjectUrls).length) settings.flowProjectUrls = flowProjectUrls
+      else delete settings.flowProjectUrls
     }
     updates.settings = Object.keys(settings).length ? JSON.stringify(settings) : null
   }
