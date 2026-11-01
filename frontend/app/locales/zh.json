@@ -461,6 +461,7 @@
       "descPlaceholder": "一句话说明该风格的适用场景",
       "preview": "风格示例图",
       "previewEmpty": "暂无示例图",
+      "viewPreview": "查看大图",
       "generatePreview": "用 AI 生成",
       "generating": "生成中…",
       "uploadPreview": "上传图片",

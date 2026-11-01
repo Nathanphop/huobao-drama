@@ -461,6 +461,7 @@
       "descPlaceholder": "이 스타일의 용도를 한 줄로",
       "preview": "스타일 미리보기",
       "previewEmpty": "미리보기 이미지가 없습니다",
+      "viewPreview": "크게 보기",
       "generatePreview": "AI로 생성",
       "generating": "생성 중…",
       "uploadPreview": "이미지 업로드",

@@ -723,13 +723,22 @@
           <div class="field">
             <span class="field-label">{{ t('settings.styleDialog.preview') }}</span>
             <div class="style-preview-editor">
-              <div class="style-preview-canvas">
+              <button
+                v-if="styleForm.preview_image_url"
+                ref="stylePreviewTrigger"
+                type="button"
+                class="style-preview-canvas is-clickable"
+                :aria-label="`${styleForm.name || 'Style'} preview — ${t('settings.styleDialog.viewPreview')}`"
+                @click="openStylePreview"
+              >
                 <img
-                  v-if="styleForm.preview_image_url"
                   :src="stylePreviewUrl(styleForm)"
                   :alt="`${styleForm.name || 'Style'} preview`"
                 />
-                <div v-else class="style-preview-empty">
+                <span class="style-preview-expand" aria-hidden="true"><Maximize2 :size="15" /></span>
+              </button>
+              <div v-else class="style-preview-canvas">
+                <div class="style-preview-empty">
                   <ImageIcon :size="24" />
                   <span>{{ t('settings.styleDialog.previewEmpty') }}</span>
                 </div>
@@ -764,6 +773,31 @@
         </div>
       </form>
     </div>
+    <Teleport to="body">
+      <div
+        v-if="stylePreviewLightbox"
+        class="style-preview-lightbox"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="`${styleForm.name || 'Style'} preview`"
+        @click.self="closeStylePreview"
+        @keydown.esc.prevent.stop="closeStylePreview"
+      >
+        <button
+          ref="stylePreviewClose"
+          type="button"
+          class="style-preview-lightbox-close"
+          :aria-label="t('common.close')"
+          @click="closeStylePreview"
+        >
+          <X :size="22" />
+        </button>
+        <figure class="style-preview-lightbox-figure">
+          <img :src="stylePreviewUrl(styleForm)" :alt="`${styleForm.name || 'Style'} preview`" />
+          <figcaption>{{ styleForm.name || 'Style' }}</figcaption>
+        </figure>
+      </div>
+    </Teleport>
     <!-- 迁移确认（自建 dialog：ConfirmDialog 的删除语义/Enter 快捷键不合此处） -->
     <div v-if="migrateDialog" class="overlay" @click.self="!migrating && (migrateDialog = false)">
       <form class="dialog" @submit.prevent="startMigrate">
@@ -815,7 +849,7 @@
 </template>
 
 <script setup>
-import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, Sparkles, Palette, ExternalLink, Star, HardDrive, Database, RefreshCw, Download, Languages, SunMoon, X, Upload, Image as ImageIcon } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, Sparkles, Palette, ExternalLink, Star, HardDrive, Database, RefreshCw, Download, Languages, SunMoon, X, Upload, Image as ImageIcon, Maximize2 } from 'lucide-vue-next'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { toast } from 'vue-sonner'
 import { toastError } from '~/composables/useToast'
@@ -1421,6 +1455,9 @@ const styleDialog = ref(false)
 const styleEditId = ref(null)
 const styleForm = reactive({ name: '', value: '', prompt: '', description: '', preview_image_url: '', sort_order: 0 })
 const stylePreviewInput = ref(null)
+const stylePreviewTrigger = ref(null)
+const stylePreviewClose = ref(null)
+const stylePreviewLightbox = ref(false)
 const stylePreviewGenerating = ref(false)
 const stylePreviewUploading = ref(false)
 
@@ -1428,6 +1465,20 @@ function stylePreviewUrl(style) {
   const raw = String(style?.preview_image_url || style?.previewImageUrl || '')
   if (!raw) return ''
   return raw.startsWith('static/') ? `/${raw}` : raw
+}
+
+async function openStylePreview() {
+  if (!styleForm.preview_image_url) return
+  stylePreviewLightbox.value = true
+  await nextTick()
+  stylePreviewClose.value?.focus()
+}
+
+async function closeStylePreview() {
+  if (!stylePreviewLightbox.value) return
+  stylePreviewLightbox.value = false
+  await nextTick()
+  stylePreviewTrigger.value?.focus()
 }
 
 async function loadStylePresets() {
@@ -1975,13 +2026,86 @@ onBeforeUnmount(stopUsagePoll)
 .style-preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .style-preview-editor { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 14px; }
 .style-preview-canvas {
+  width: 100%;
+  padding: 0;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-2);
 }
+.style-preview-canvas.is-clickable {
+  position: relative;
+  cursor: zoom-in;
+  transition: border-color 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
+}
+.style-preview-canvas.is-clickable:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.style-preview-canvas.is-clickable:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3.5px var(--button-focus); }
 .style-preview-canvas img { width: 100%; height: 100%; object-fit: cover; }
+.style-preview-expand {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(10, 14, 20, 0.72);
+  backdrop-filter: blur(5px);
+  transition: transform 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+.style-preview-canvas.is-clickable:hover .style-preview-expand { transform: scale(1.06); background: rgba(10, 14, 20, 0.88); }
+.style-preview-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: rgba(3, 6, 10, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: fadeIn 0.18s var(--ease-out);
+}
+.style-preview-lightbox-close {
+  position: fixed;
+  top: 22px;
+  right: 22px;
+  z-index: 1;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+  cursor: pointer;
+}
+.style-preview-lightbox-close:hover { background: rgba(255,255,255,0.18); }
+.style-preview-lightbox-close:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.style-preview-lightbox-figure {
+  max-width: min(1200px, 94vw);
+  max-height: 90vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.style-preview-lightbox-figure img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(90vh - 34px);
+  object-fit: contain;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.52);
+}
+.style-preview-lightbox-figure figcaption { color: rgba(255,255,255,0.82); font-size: 13px; font-weight: 650; }
 .style-preview-empty {
   width: 100%; height: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
@@ -1992,6 +2116,8 @@ onBeforeUnmount(stopUsagePoll)
 @media (max-width: 620px) {
   .style-preview-editor { grid-template-columns: 1fr; }
   .style-preview-canvas { max-width: 240px; }
+  .style-preview-lightbox { padding: 56px 14px 28px; }
+  .style-preview-lightbox-close { top: 14px; right: 14px; }
 }
 .provider-badge {
   width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;

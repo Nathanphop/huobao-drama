@@ -44,6 +44,10 @@ test('settings page manages style presets in a base tab', () => {
   assert.match(settings, /generateStylePreview/)
   assert.match(settings, /uploadStylePreview/)
   assert.match(settings, /removeStylePreview/)
+  assert.match(settings, /openStylePreview/)
+  assert.match(settings, /stylePreviewLightbox/)
+  assert.match(settings, /@keydown\.esc\.prevent\.stop="closeStylePreview"/)
+  assert.match(settings, /role="dialog"/)
   assert.match(settings, /p\.preview_image_url/)
   // 风格 key 编辑时不可修改
   assert.match(settings, /:disabled="!!styleEditId"/)

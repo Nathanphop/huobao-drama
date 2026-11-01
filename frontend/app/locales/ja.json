@@ -461,6 +461,7 @@
       "descPlaceholder": "このスタイルの用途を一行で",
       "preview": "スタイルプレビュー",
       "previewEmpty": "プレビュー画像はまだありません",
+      "viewPreview": "拡大表示",
       "generatePreview": "AIで生成",
       "generating": "生成中…",
       "uploadPreview": "画像をアップロード",

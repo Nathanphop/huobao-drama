@@ -461,6 +461,7 @@
       "descPlaceholder": "One line about when to use this style",
       "preview": "Style preview",
       "previewEmpty": "No preview image yet",
+      "viewPreview": "View larger",
       "generatePreview": "Generate with AI",
       "generating": "Generating…",
       "uploadPreview": "Upload image",
