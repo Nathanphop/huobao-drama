@@ -37,12 +37,23 @@ let lastState: Omit<ServerUpdateState, 'updateMode'> | null = null
 
 function currentVersion(): string {
   if (process.env.HUOBAO_VERSION) return process.env.HUOBAO_VERSION.replace(/^v/, '')
-  try {
-    const pkg = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json')
-    return JSON.parse(readFileSync(pkg, 'utf-8')).version || '0.0.0'
-  } catch {
-    return '0.0.0'
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url))
+  // Source/server mode uses the release version owned by the Desktop package.
+  // The backend package keeps its independent npm package version and must not
+  // make the About page report a false update (for example 1.0.0 → 4.0.10).
+  const candidates = [
+    path.resolve(moduleDir, '../../../desktop/package.json'),
+    path.resolve(moduleDir, '../../package.json'),
+  ]
+  for (const pkg of candidates) {
+    try {
+      const version = JSON.parse(readFileSync(pkg, 'utf-8')).version
+      if (version) return String(version).replace(/^v/, '')
+    } catch {
+      // Packaged/Docker builds normally provide HUOBAO_VERSION instead.
+    }
   }
+  return '0.0.0'
 }
 
 export function updateMode(): ServerUpdateMode {
