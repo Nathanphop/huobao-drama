@@ -45,6 +45,21 @@
             :default-label="t('episode.model.defaultWith', { model: videoModelOptions[0].model })"
             :show-config="videoModelMultiCfg"
           />
+          <button
+            v-if="selectedVideoConfig?.provider === 'google_flow'"
+            type="button"
+            class="flow-credit-pill"
+            :class="{ 'is-loading': flowCreditsLoading, 'has-usage': flowCreditsObservedUsed > 0 }"
+            :title="flowCreditsTitle"
+            :disabled="flowCreditsLoading"
+            @click="loadFlowCredits(true)"
+          >
+            <Loader2 v-if="flowCreditsLoading" :size="12" class="animate-spin" />
+            <Coins v-else :size="12" :stroke-width="1.9" />
+            <span v-if="flowCredits">{{ t('episode.credits.balanceCompact', { n: flowCredits.total }) }}</span>
+            <span v-else>{{ t('episode.credits.flow') }}</span>
+            <span v-if="flowCreditsObservedUsed > 0" class="flow-credit-used">−{{ flowCreditsObservedUsed }}</span>
+          </button>
           <ModelSelect
             v-model="episodeResolution"
             :label="t('episode.topbar.resolution')"
@@ -1463,9 +1478,9 @@ import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import {
   Users, FileText, FolderKanban, Clapperboard, Download, Loader2,
-  Plus, X, ListTodo, CircleHelp,
+  Plus, X, ListTodo, CircleHelp, Coins,
 } from 'lucide-vue-next'
-import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
+import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, googleFlowAPI, uploadAPI } from '~/composables/useApi'
 import { startTour, autoTour } from '~/composables/useTour'
 import { useAgent } from '~/composables/useAgent'
 import { resolveTextModelSelection } from '~/utils/text-model-selection'
@@ -1970,6 +1985,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleImageViewerKeydown)
   stopGenTasksPolling()
+  if (flowCreditsTimer) clearInterval(flowCreditsTimer)
 })
 
 function isPendingSceneImage(id) {
@@ -2240,6 +2256,77 @@ const selectedVideoConfig = computed(() => {
     .filter(config => config.is_active)
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0]
 })
+const flowCredits = ref(null)
+const flowCreditsLoading = ref(false)
+const flowCreditsObservedUsed = ref(0)
+const flowCreditsPreviousBalance = ref(null)
+let flowCreditsRequest = null
+let flowCreditsTimer = null
+
+const flowCreditsTitle = computed(() => {
+  if (!flowCredits.value) return t('episode.credits.refresh')
+  const parts = [t('episode.credits.balance', { n: flowCredits.value.total })]
+  if (flowCredits.value.subscription || flowCredits.value.topUp) {
+    parts.push(t('episode.credits.breakdown', {
+      subscription: flowCredits.value.subscription,
+      topUp: flowCredits.value.topUp,
+    }))
+  }
+  if (flowCreditsObservedUsed.value > 0) {
+    parts.push(t('episode.credits.usedObserved', { n: flowCreditsObservedUsed.value }))
+  }
+  if (flowCredits.value.refreshAt) {
+    const refreshAt = new Date(flowCredits.value.refreshAt)
+    if (!Number.isNaN(refreshAt.getTime())) {
+      parts.push(t('episode.credits.refreshAt', { time: refreshAt.toLocaleString() }))
+    }
+  }
+  return parts.join(' · ')
+})
+
+async function loadFlowCredits(fresh = false) {
+  const config = selectedVideoConfig.value
+  if (config?.provider !== 'google_flow') {
+    flowCredits.value = null
+    flowCreditsPreviousBalance.value = null
+    flowCreditsObservedUsed.value = 0
+    return null
+  }
+  if (flowCreditsRequest) return flowCreditsRequest
+  flowCreditsLoading.value = true
+  flowCreditsRequest = googleFlowAPI.credits(
+    String(config.flow_authuser || '0'),
+    String(config.flow_project_url || ''),
+    fresh,
+  ).then(result => {
+    const total = Number(result?.total)
+    if (!Number.isFinite(total)) return null
+    const previous = flowCreditsPreviousBalance.value
+    if (Number.isFinite(previous) && total < previous) {
+      flowCreditsObservedUsed.value += previous - total
+    } else if (Number.isFinite(previous) && total > previous) {
+      // A daily refresh, refund or top-up starts a new observable window.
+      flowCreditsObservedUsed.value = 0
+    }
+    flowCreditsPreviousBalance.value = total
+    flowCredits.value = result
+    return result
+  }).catch(() => null).finally(() => {
+    flowCreditsLoading.value = false
+    flowCreditsRequest = null
+  })
+  return flowCreditsRequest
+}
+
+watch(
+  [() => selectedVideoConfig.value?.id, () => selectedVideoConfig.value?.flow_authuser],
+  () => {
+    flowCredits.value = null
+    flowCreditsPreviousBalance.value = null
+    flowCreditsObservedUsed.value = 0
+    void loadFlowCredits(true)
+  },
+)
 watch([() => selectedVideoConfig.value?.id, videoModel], () => {
   if (!episode.value) return
   const config = selectedVideoConfig.value
@@ -3466,6 +3553,7 @@ async function pollVideoGeneration(generationId, storyboardId) {
         pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
         delete failedVideoMessages.value[storyboardId]
         toast.success(t('episode.vid.genDone'))
+        void loadFlowCredits(true)
         return
       }
       if (res?.status === 'failed') {
@@ -3476,6 +3564,7 @@ async function pollVideoGeneration(generationId, storyboardId) {
           [storyboardId]: errMsg,
         }
         toastError(errMsg, { fallback: 'episode.vid.genFailed' })
+        void loadFlowCredits(true)
         return
       }
     } catch {}
@@ -3522,7 +3611,13 @@ async function loadConfigs() {
   } catch (e) { console.error('Failed to load AI configs', e) }
 }
 
-onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
+onMounted(async () => {
+  await refresh()
+  await loadConfigs()
+  await loadFlowCredits()
+  syncExtractStatus()
+  flowCreditsTimer = setInterval(() => { void loadFlowCredits() }, 30_000)
+})
 
 // ===== 应用内引导（工作台）：沿左侧进度栏走 6 步流水线 =====
 const EPISODE_TOUR = [
@@ -4568,6 +4663,32 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
   margin-right: 12px;
   padding-right: 12px;
   border-right: 1px solid var(--border);
+}
+.flow-credit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-bg) 78%, transparent);
+  color: var(--accent-text);
+  font-size: 9.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.flow-credit-pill:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.flow-credit-pill:disabled { cursor: wait; opacity: .72; }
+.flow-credit-pill.has-usage { border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); }
+.flow-credit-used {
+  padding-left: 4px;
+  border-left: 1px solid currentColor;
+  color: var(--warning);
 }
 .asset-final-prompt {
   display: flex;

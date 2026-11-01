@@ -38,6 +38,15 @@ export interface GoogleFlowStatus {
   cdpEndpoint: string
 }
 
+export interface GoogleFlowCredits {
+  total: number
+  subscription: number
+  topUp: number
+  refreshAt: string | null
+  observedAt: string
+  source: 'google-flow-rpc'
+}
+
 interface CdpTab {
   id: string
   url?: string
@@ -54,6 +63,62 @@ interface FlowProgress {
   percent: number
   stage?: string
 }
+
+const FLOW_CREDITS_EXPRESSION = String.raw`(async () => {
+  const rpcId = 'nzlxg'
+  const globals = window.WIZ_global_data || {}
+  const at = globals.SNlM0e
+  const bl = globals.cfb2h
+  const sid = globals.FdrFJe
+  if (!at || !bl) return { ok: false, detail: 'Google Flow credit RPC is not ready.' }
+  const accountMatch = location.pathname.match(/^\/u\/(\d+)\//)
+  const accountPrefix = accountMatch ? '/u/' + accountMatch[1] : ''
+  const body = 'f.req=' + encodeURIComponent(JSON.stringify([[[rpcId, '[]', null, 'generic']]]))
+    + '&at=' + encodeURIComponent(at) + '&'
+  const url = location.origin + accountPrefix
+    + '/_/AiSandboxAngularFrontend/data/batchexecute'
+    + '?rpcids=' + rpcId
+    + '&source-path=' + encodeURIComponent(location.pathname)
+    + '&bl=' + encodeURIComponent(bl)
+    + '&f.sid=' + encodeURIComponent(sid || '')
+    + '&hl=en&_reqid=' + (1000000 + Math.floor(8000000 * Math.random())) + '&rt=c'
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      'X-Same-Domain': '1',
+    },
+    body,
+  })
+  if (!response.ok) return { ok: false, detail: 'Google Flow credit RPC returned HTTP ' + response.status }
+  const text = await response.text()
+  for (const line of text.replace(")]}'", '').split(/\r?\n/)) {
+    if (!line.trimStart().startsWith('[')) continue
+    let rows
+    try { rows = JSON.parse(line) } catch { continue }
+    for (const row of rows) {
+      if (!Array.isArray(row) || row[0] !== 'wrb.fr' || row[1] !== rpcId) continue
+      let payload = row[2]
+      try { payload = typeof payload === 'string' ? JSON.parse(payload) : payload } catch { continue }
+      if (!Array.isArray(payload) || !Number.isFinite(Number(payload[0]))) continue
+      const refresh = Array.isArray(payload[6]) ? payload[6] : null
+      const refreshMs = refresh
+        ? Number(refresh[0] || 0) * 1000 + Number(refresh[1] || 0) / 1000000
+        : 0
+      return {
+        ok: true,
+        total: Number(payload[0]),
+        subscription: Number(payload[5] || 0),
+        topUp: Number(payload[4] || 0),
+        refreshAt: refreshMs > 0 ? new Date(refreshMs).toISOString() : null,
+      }
+    }
+  }
+  return { ok: false, detail: 'Google Flow did not return a credit balance.' }
+})()`
+
+const flowCreditsCache = new Map<string, { expiresAt: number; value: GoogleFlowCredits }>()
 
 const FLOW_ACCOUNT_DISCOVERY_EXPRESSION = String.raw`(async () => {
   const accounts = []
@@ -308,6 +373,70 @@ export async function getGoogleFlowStatus(): Promise<GoogleFlowStatus> {
       accounts: [],
       cdpEndpoint: CDP_ENDPOINT,
     }
+  }
+}
+
+function googleFlowUrlForAccount(projectUrl: string | null | undefined, authuser: string): string {
+  let url: URL
+  try {
+    url = new URL(projectUrl || 'https://flow.google.com/')
+  } catch {
+    url = new URL('https://flow.google.com/')
+  }
+  if (url.origin !== 'https://flow.google.com') url = new URL('https://flow.google.com/')
+  url.searchParams.set('authuser', authuser)
+  return url.toString()
+}
+
+/** Read the signed-in account's live Flow balance from Flow's own credits RPC. */
+export async function getGoogleFlowCredits(
+  authuser = '0',
+  projectUrl?: string | null,
+  force = false,
+): Promise<GoogleFlowCredits> {
+  const normalizedAuthuser = /^\d+$/.test(authuser) ? authuser : '0'
+  const cacheKey = `${normalizedAuthuser}:${projectUrl || ''}`
+  const cached = flowCreditsCache.get(cacheKey)
+  if (!force && cached && cached.expiresAt > Date.now()) return cached.value
+
+  let temporaryTabId: string | null = null
+  try {
+    temporaryTabId = await createBackgroundTab(googleFlowUrlForAccount(projectUrl, normalizedAuthuser))
+    let tab: CdpTab | undefined
+    let lastDetail = 'Google Flow credit RPC is not ready.'
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 250))
+      tab = (await readTabs()).find(item => item.id === temporaryTabId)
+      if (!tab?.webSocketDebuggerUrl || !tab.url?.startsWith('https://flow.google.com/')) continue
+      try {
+        const evaluated = await cdpCall(tab.webSocketDebuggerUrl, 'Runtime.evaluate', {
+          expression: FLOW_CREDITS_EXPRESSION,
+          awaitPromise: true,
+          returnByValue: true,
+        }, 15_000)
+        const result = evaluated?.result?.value
+        if (!result?.ok) {
+          lastDetail = String(result?.detail || lastDetail)
+          continue
+        }
+        const value: GoogleFlowCredits = {
+          total: Number(result.total),
+          subscription: Number(result.subscription || 0),
+          topUp: Number(result.topUp || 0),
+          refreshAt: typeof result.refreshAt === 'string' ? result.refreshAt : null,
+          observedAt: new Date().toISOString(),
+          source: 'google-flow-rpc',
+        }
+        if (!Number.isFinite(value.total)) throw new Error('Google Flow returned an invalid credit balance.')
+        flowCreditsCache.set(cacheKey, { expiresAt: Date.now() + 15_000, value })
+        return value
+      } catch (error: any) {
+        lastDetail = error?.message || lastDetail
+      }
+    }
+    throw new Error(lastDetail)
+  } finally {
+    await closeTab(temporaryTabId)
   }
 }
 

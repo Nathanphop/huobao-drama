@@ -444,6 +444,15 @@ const th = {
       resolution: 'ความละเอียด',
     },
     model: { defaultWith: 'ค่าเริ่มต้น · {model}', notConfigured: 'ยังไม่ได้ตั้งค่า' },
+    credits: {
+      flow: 'เครดิต Flow',
+      balanceCompact: 'Flow {n}',
+      balance: 'เครดิต Google Flow คงเหลือ {n}',
+      breakdown: 'เครดิตสมาชิก {subscription}, เครดิตเติม {topUp}',
+      usedObserved: 'ใช้จริง {n} เครดิตนับตั้งแต่เปิดหน้านี้',
+      refreshAt: 'รีเฟรชรอบใหม่ {time}',
+      refresh: 'รีเฟรชยอดเครดิตจริงจาก Google Flow',
+    },
     sidebar: { inProgress: 'กำลังดำเนินการ', refreshData: 'รีเฟรชข้อมูล', collapse: 'ย่อแถบด้านข้าง', expand: 'ขยายแถบด้านข้าง' },
     nav: { prev: 'ย้อนกลับ', next: 'ถัดไป', toExport: 'ไปที่ส่งออก' },
     stage: {

@@ -165,6 +165,19 @@ export const googleFlowAPI = {
     cdpEndpoint: string
   }>('/google-flow/status'),
   refresh: (authuser = '0') => api.post('/google-flow/refresh', { authuser }),
+  credits: (authuser = '0', projectUrl = '', fresh = false) => {
+    const query = new URLSearchParams({ authuser })
+    if (projectUrl) query.set('project_url', projectUrl)
+    if (fresh) query.set('fresh', '1')
+    return api.get<{
+      total: number
+      subscription: number
+      topUp: number
+      refreshAt: string | null
+      observedAt: string
+      source: 'google-flow-rpc'
+    }>(`/google-flow/credits?${query.toString()}`)
+  },
   models: () => api.get<{
     image: Array<{ id: string; displayName: string; isDefault: boolean }>
     video: Array<{ id: string; displayName: string; isDefault: boolean }>

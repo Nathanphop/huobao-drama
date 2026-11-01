@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import {
+  getGoogleFlowCredits,
   getGoogleFlowStatus,
   GOOGLE_FLOW_IMAGE_MODELS,
   GOOGLE_FLOW_VIDEO_MODELS,
@@ -25,6 +26,15 @@ app.use('*', async (c, next) => {
 })
 
 app.get('/status', async c => success(c, await getGoogleFlowStatus()))
+
+app.get('/credits', async c => {
+  const authuser = /^\d+$/.test(String(c.req.query('authuser') || ''))
+    ? String(c.req.query('authuser'))
+    : '0'
+  const projectUrl = String(c.req.query('project_url') || '')
+  const force = c.req.query('fresh') === '1'
+  return success(c, await getGoogleFlowCredits(authuser, projectUrl, force))
+})
 
 app.get('/models', c => success(c, {
   image: GOOGLE_FLOW_IMAGE_MODELS.map((id, index) => ({ id, displayName: id, isDefault: index === 0 })),

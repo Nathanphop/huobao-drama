@@ -54,3 +54,12 @@ test('Google Flow forwards its real render percentage into persistent tasks', ()
   assert.match(schema, /progress: integer\('progress'\)/)
   assert.match(sqliteSchema, /progress: 'INTEGER DEFAULT 0'/)
 })
+
+test('Google Flow exposes the signed-in account credit balance from the live RPC', () => {
+  assert.match(service, /const rpcId = 'nzlxg'/)
+  assert.match(service, /source: 'google-flow-rpc'/)
+  assert.match(service, /subscription: Number\(result\.subscription/)
+  assert.match(service, /topUp: Number\(result\.topUp/)
+  assert.match(route, /app\.get\('\/credits'/)
+  assert.match(route, /getGoogleFlowCredits\(authuser, projectUrl, force\)/)
+})

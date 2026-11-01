@@ -516,6 +516,15 @@
       "defaultWith": "Default · {model}",
       "notConfigured": "Not configured"
     },
+    "credits": {
+      "flow": "Flow credits",
+      "balanceCompact": "Flow {n}",
+      "balance": "{n} Google Flow credits remaining",
+      "breakdown": "subscription {subscription}, top-up {topUp}",
+      "usedObserved": "{n} credits used since this page was opened",
+      "refreshAt": "refreshes {time}",
+      "refresh": "Refresh the live Google Flow credit balance"
+    },
     "sidebar": {
       "inProgress": "In progress",
       "refreshData": "Refresh Data",
