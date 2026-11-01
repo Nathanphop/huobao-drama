@@ -2067,8 +2067,11 @@ function videoTaskProgress(sb) {
   if (task.status === 'completed') return 100
   if (task.status === 'failed') return 0
 
+  const provider = String(task.provider || '').toLowerCase()
   const reported = Number(task.progress ?? task.progress_percent)
-  if (Number.isFinite(reported) && reported > 0) return Math.max(1, Math.min(99, Math.round(reported)))
+  if (Number.isFinite(reported) && (reported > 0 || provider === 'google_flow')) {
+    return Math.max(0, Math.min(99, Math.round(reported)))
+  }
 
   const stage = String(task.stage || 'submitting')
   if (stage === 'saving') return 99
@@ -2077,7 +2080,6 @@ function videoTaskProgress(sb) {
 
   const createdAt = new Date(task.created_at || task.createdAt || Date.now()).getTime()
   const elapsedSeconds = Math.max(0, (Date.now() - createdAt) / 1000)
-  const provider = String(task.provider || '').toLowerCase()
   const model = String(task.model || '').toLowerCase()
   let estimatedSeconds = 180
   if (provider === 'google_flow') {

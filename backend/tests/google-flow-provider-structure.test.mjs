@@ -7,6 +7,8 @@ const ai = read('../src/services/ai.ts')
 const service = read('../src/services/google-flow.ts')
 const generation = read('../src/services/generation.ts')
 const route = read('../src/routes/googleFlow.ts')
+const schema = read('../src/db/schema.ts')
+const sqliteSchema = read('../src/db/sqlite-schema.ts')
 
 test('Google Flow is limited to image and video providers', () => {
   assert.doesNotMatch(ai, /text: \[[^\]]*google_flow/)
@@ -38,4 +40,17 @@ test('Google Flow video automation tolerates dynamic settings UI and local frame
   assert.match(video, /page\.expect_file_chooser/)
   assert.match(video, /\^Upload media\$/)
   assert.match(video, /chooser_info\.value\.set_files\(local_path\)/)
+})
+
+test('Google Flow forwards its real render percentage into persistent tasks', () => {
+  const video = read('../scripts/google-flow/google_flow_video_auto.py')
+  assert.match(video, /FLOW_PROGRESS:/)
+  assert.match(video, /flow-grid-tile-container/)
+  assert.match(video, /emit_flow_progress\(progress_values\[-1\], "rendering"\)/)
+  assert.match(service, /line\.match\(\/\^FLOW_PROGRESS:/)
+  assert.match(service, /onProgress\?: \(progress: FlowProgress\)/)
+  assert.match(generation, /onProgress: async update/)
+  assert.match(generation, /progress: flowProgress/)
+  assert.match(schema, /progress: integer\('progress'\)/)
+  assert.match(sqliteSchema, /progress: 'INTEGER DEFAULT 0'/)
 })

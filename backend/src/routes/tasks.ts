@@ -22,7 +22,7 @@ app.get('/:id/diagnostics', async c => {
   const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, Number(c.req.param('id'))))
   if (!task) return badRequest(c, '任务不存在')
   return success(c, { id: task.id, upstreamTaskId: task.taskId, provider: task.provider, model: task.model,
-    status: task.status, stage: task.stage, errorCode: task.errorCode, error: safeTaskError(task.errorMsg),
+    status: task.status, stage: task.stage, progress: task.progress ?? 0, errorCode: task.errorCode, error: safeTaskError(task.errorMsg),
     hasResult: !!task.resultUrl, hasLocalFile: !!task.localPath, createdAt: task.createdAt, updatedAt: task.updatedAt,
     version: process.env.HUOBAO_VERSION || 'development' })
 })

@@ -34,6 +34,15 @@ SUPPORTED_VIDEO_MODELS = {
 }
 
 
+def emit_flow_progress(percent, stage="rendering"):
+    value = max(0, min(100, int(round(float(percent)))))
+    print(
+        "FLOW_PROGRESS: "
+        + json.dumps({"percent": value, "stage": stage}, ensure_ascii=False),
+        flush=True,
+    )
+
+
 def click_radio(page, label):
     radio = page.get_by_role("radio", name=label, exact=True)
     # Flow can append helper copy to an option's accessible name (for example,
@@ -375,6 +384,18 @@ def wait_for_new_video_tile(page, previous_urls, timeout_seconds):
             return candidates[-1]
         body_text = page.locator("body").inner_text(timeout=5000)
         lowered = body_text.lower()
+        progress_texts = page.locator("flow-grid-tile-container").all_inner_texts()
+        progress_source = next(
+            (text for text in progress_texts if re.search(r"(?<!\d)\d{1,3}%", text)),
+            body_text,
+        )
+        progress_values = [
+            int(value)
+            for value in re.findall(r"(?<!\d)(\d{1,3})%", progress_source)
+            if 0 <= int(value) <= 100
+        ]
+        if progress_values:
+            emit_flow_progress(progress_values[-1], "rendering")
         for marker in (
             "video generation failed",
             "generation failed",
@@ -385,7 +406,7 @@ def wait_for_new_video_tile(page, previous_urls, timeout_seconds):
                 raise RuntimeError(
                     "Google Flow แจ้งว่าสร้างวิดีโอไม่สำเร็จ กรุณาตรวจ Prompt เครดิต และข้อจำกัดของโมเดล"
                 )
-        if re.search(r"\d{1,3}%", body_text) or any(
+        if progress_values or any(
             marker in lowered
             for marker in ("generating", "creating", "thinking", "analyzing")
         ):
@@ -463,13 +484,17 @@ def generate_video(
         context.add_cookies(cookies)
         page = context.new_page()
         try:
+            emit_flow_progress(0, "opening")
             resolved_project_url = open_or_create_project(page, project_url, authuser)
+            emit_flow_progress(0, "configuring")
             configure_video_settings(page, aspect_ratio, model, video_type, resolution, duration)
+            emit_flow_progress(0, "preparing")
             if reference_specs:
                 if video_type == "Frames":
                     attach_frame_images(page, reference_specs)
                 else:
                     attach_reference_images(page, reference_specs)
+            emit_flow_progress(0, "submitting")
             prompt_editor = find_prompt_editor(page)
             previous_urls = read_video_tiles(page)
             prompt_editor.fill(prompt)
@@ -488,10 +513,13 @@ def generate_video(
             if not start.is_enabled():
                 raise RuntimeError("ปุ่ม Start generation ยังไม่พร้อมหลังตั้งค่าวิดีโอ")
             start.click(timeout=15000)
+            emit_flow_progress(0, "rendering")
             asset_url = wait_for_new_video_tile(page, previous_urls, timeout_seconds)
+            emit_flow_progress(98, "downloading")
             content_type, size = download_video_tile(
                 page, asset_url, output_path, resolution
             )
+            emit_flow_progress(99, "saving")
             if resolution == "360p":
                 width, height = ((640, 360) if aspect_ratio == "16:9" else (360, 640))
             else:

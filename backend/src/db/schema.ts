@@ -206,6 +206,7 @@ export const sysTask = sqliteTable('sys_task', {
   configId: integer('config_id'),
   configBaseUrl: text('config_base_url'),
   stage: text('stage'),
+  progress: integer('progress').default(0),
   errorCode: text('error_code'),
   type: text('type').notNull(), // image | video
   storyboardId: integer('storyboard_id'),

@@ -11,6 +11,7 @@ test('video workbench displays model-aware generation progress', () => {
 
   assert.match(episode, /function videoTaskProgress\(sb\)/)
   assert.match(episode, /provider === 'google_flow'/)
+  assert.match(episode, /reported > 0 \|\| provider === 'google_flow'/)
   assert.match(episode, /model\.includes\('quality'\)/)
   assert.match(episode, /role="progressbar"/)
   assert.match(episode, /videoTaskProgress\(selectedSb\)/)

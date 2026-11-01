@@ -50,6 +50,11 @@ interface PythonResult {
   stderr: string
 }
 
+interface FlowProgress {
+  percent: number
+  stage?: string
+}
+
 const FLOW_ACCOUNT_DISCOVERY_EXPRESSION = String.raw`(async () => {
   const accounts = []
   const seenEmails = new Set()
@@ -306,7 +311,11 @@ export async function getGoogleFlowStatus(): Promise<GoogleFlowStatus> {
   }
 }
 
-function runPython(args: string[], timeoutMs: number): Promise<PythonResult> {
+function runPython(
+  args: string[],
+  timeoutMs: number,
+  onProgress?: (progress: FlowProgress) => void | Promise<void>,
+): Promise<PythonResult> {
   return new Promise(resolveRun => {
     const child = spawn(PYTHON_BIN, args, {
       cwd: SCRIPTS_DIR,
@@ -316,6 +325,8 @@ function runPython(args: string[], timeoutMs: number): Promise<PythonResult> {
     })
     let stdout = ''
     let stderr = ''
+    let progressLineBuffer = ''
+    let progressQueue = Promise.resolve()
     let settled = false
     const finish = (result: PythonResult) => {
       if (settled) return
@@ -327,10 +338,34 @@ function runPython(args: string[], timeoutMs: number): Promise<PythonResult> {
       child.kill()
       finish({ ok: false, stdout, stderr: `${stderr}\nGoogle Flow automation timed out.` })
     }, timeoutMs)
-    child.stdout.on('data', chunk => { stdout = `${stdout}${chunk}`.slice(-20_000) })
+    child.stdout.on('data', chunk => {
+      const text = String(chunk)
+      stdout = `${stdout}${text}`.slice(-20_000)
+      progressLineBuffer += text
+      const lines = progressLineBuffer.split(/\r?\n/)
+      progressLineBuffer = lines.pop() || ''
+      for (const line of lines) {
+        const marker = line.match(/^FLOW_PROGRESS:\s*(\{.*\})\s*$/)
+        if (!marker || !onProgress) continue
+        try {
+          const parsed = JSON.parse(marker[1])
+          const percent = Number(parsed?.percent)
+          if (!Number.isFinite(percent)) continue
+          const update = {
+            percent: Math.max(0, Math.min(100, percent)),
+            stage: typeof parsed?.stage === 'string' ? parsed.stage : undefined,
+          }
+          progressQueue = progressQueue.then(() => onProgress(update)).then(() => undefined).catch(() => undefined)
+        } catch {
+          // Ignore malformed progress telemetry while preserving generation.
+        }
+      }
+    })
     child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-20_000) })
     child.once('error', error => finish({ ok: false, stdout, stderr: error.message }))
-    child.once('exit', code => finish({ ok: code === 0, stdout, stderr }))
+    child.once('exit', code => {
+      void progressQueue.finally(() => finish({ ok: code === 0, stdout, stderr }))
+    })
   })
 }
 
@@ -437,6 +472,7 @@ export async function generateGoogleFlowVideo(options: {
   references?: string[]
   authuser?: string | null
   projectUrl?: string | null
+  onProgress?: (progress: FlowProgress) => void | Promise<void>
 }): Promise<{ buffer: Buffer; mimeType: string; duration: number; metadata: any }> {
   const authuser = /^\d+$/.test(String(options.authuser || '')) ? String(options.authuser) : '0'
   const model = GOOGLE_FLOW_VIDEO_MODELS.includes(options.model as any)
@@ -466,7 +502,7 @@ export async function generateGoogleFlowVideo(options: {
     ]
     if (options.projectUrl) args.push('--project-url', options.projectUrl)
     if (references.length) args.push('--references-file', manifestPath)
-    const result = await runPython(args, 22 * 60_000)
+    const result = await runPython(args, 22 * 60_000, options.onProgress)
     if (!result.ok) throw new Error(safePythonError(result))
     const [buffer, metadata] = await Promise.all([
       readFile(outputPath),

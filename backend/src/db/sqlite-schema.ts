@@ -397,9 +397,10 @@ export function initSqliteSchema(sqlite: Database.Database) {
   }
   // 兼容已安装的桌面版；仅增加任务恢复元数据，不改写历史生成结果。
   const taskColumns = new Set((sqlite.prepare('PRAGMA table_info(sys_task)').all() as { name: string }[]).map(c => c.name))
-  for (const [name, type] of Object.entries({ config_id: 'INTEGER', config_base_url: 'TEXT', stage: 'TEXT', error_code: 'TEXT' })) {
+  for (const [name, type] of Object.entries({ config_id: 'INTEGER', config_base_url: 'TEXT', stage: 'TEXT', progress: 'INTEGER DEFAULT 0', error_code: 'TEXT' })) {
     if (!taskColumns.has(name)) sqlite.exec(`ALTER TABLE sys_task ADD COLUMN ${name} ${type}`)
   }
+  sqlite.exec("UPDATE sys_task SET progress = 100 WHERE status = 'completed' AND COALESCE(progress, 0) = 0")
   // 角色音色由用户上传；旧库补充可空字段，不修改已有角色和图片。
   const characterColumns = new Set((sqlite.prepare('PRAGMA table_info(characters)').all() as { name: string }[]).map(c => c.name))
   for (const name of ['voice_audio_url', 'voice_audio_name']) {

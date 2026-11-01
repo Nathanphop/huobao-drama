@@ -200,6 +200,7 @@ async function createTask(
     configId: config.id,
     configBaseUrl: config.baseUrl,
     stage: 'submitting',
+    progress: 0,
     params: JSON.stringify(params),
     status: 'processing',
     createdAt: ts,
@@ -294,6 +295,7 @@ async function processTask(id: number, config: AIConfig) {
         ].filter((value): value is string => typeof value === 'string' && !!value)
         const references = await normalizeVideoReferenceUrls(rawReferences)
         logTaskProgress(label, 'google-flow-video-request', { id, model: record.model })
+        let flowProgress = 0
         const video = await generateGoogleFlowVideo({
           prompt: record.prompt || '',
           model: record.model,
@@ -303,6 +305,14 @@ async function processTask(id: number, config: AIConfig) {
           references,
           authuser: config.flowAuthuser,
           projectUrl: config.flowProjectUrl,
+          onProgress: async update => {
+            flowProgress = Math.max(flowProgress, Math.max(0, Math.min(99, Math.round(update.percent))))
+            await db.update(schema.sysTask).set({
+              progress: flowProgress,
+              stage: update.stage || 'rendering',
+              updatedAt: now(),
+            }).where(eq(schema.sysTask.id, id))
+          },
         })
         await rememberGoogleFlowProject(config, video.metadata?.projectUrl)
         await handleVideoCompleteBuffer(record, video.buffer, video.duration)
@@ -592,7 +602,7 @@ async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, dura
       if (record.storyboardId && !newer) tx.update(schema.storyboards)
         .set({ videoUrl: localPath, duration: duration || undefined, updatedAt: now() })
         .where(eq(schema.storyboards.id, record.storyboardId)).run()
-      tx.update(schema.sysTask).set({ localPath, status: 'completed', stage: 'completed', errorCode: null,
+      tx.update(schema.sysTask).set({ localPath, status: 'completed', stage: 'completed', progress: 100, errorCode: null,
         errorMsg: null, completedAt: now(), updatedAt: now() }).where(eq(schema.sysTask.id, record.id)).run()
     })
   } catch (error) {
@@ -617,6 +627,7 @@ async function handleVideoCompleteBuffer(record: SysTaskRecord, buffer: Buffer, 
       localPath,
       status: 'completed',
       stage: 'completed',
+      progress: 100,
       errorCode: null,
       errorMsg: null,
       completedAt: now(),
