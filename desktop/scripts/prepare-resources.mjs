@@ -34,6 +34,14 @@ const workspaceSrc = path.join(REPO, 'backend', 'workspace')
 fs.cpSync(workspaceSrc, path.join(RES, 'workspace-template'), { recursive: true })
 console.log('resources/workspace-template ✓')
 
+// 2b. Google Flow localhost companion scripts (RPC-first + Playwright fallback)
+const googleFlowSrc = path.join(REPO, 'backend', 'scripts', 'google-flow')
+fs.cpSync(googleFlowSrc, path.join(RES, 'google-flow'), {
+  recursive: true,
+  filter: source => path.basename(source) !== 'session.json' && path.basename(source) !== '__pycache__',
+})
+console.log('resources/google-flow ✓')
+
 // 3. macOS 两种架构独立准备；ffprobe-static 的 arm64 目录实际可能含 x64 二进制，
 //    因此两种媒体工具统一使用 ffmpeg-static 对应版本的官方发布产物。
 const req = createRequire(import.meta.url)

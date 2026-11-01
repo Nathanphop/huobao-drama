@@ -274,6 +274,16 @@ All AI features (text/image/video) require model services to be configured first
 配置完成横幅自动消失，即可开始创建剧集生产。<br>
 Once configured, the banner disappears and you can start producing episodes.
 
+#### 通过 ChatGPT 使用 Codex（本机文本与图片服务） / Codex via ChatGPT (local text and image provider)
+
+「设置 → AI 服务」支持 **Codex · ChatGPT OAuth** 文本与图片服务。文本模型目录来自本机 Codex app-server；图片使用隔离的本机 Codex 图片适配器。火宝通过 stdio 启动 `codex app-server` 并复用 Codex CLI 管理的 OAuth 会话；API Key 与 OAuth Token 都不会暴露给浏览器。每次文本调用使用临时线程、只读沙箱、`approvalPolicy: never`，并且只允许调用白名单内的火宝数据工具；Codex 本机接口默认仅接受回环连接。<br>
+Settings → AI Services supports **Codex · ChatGPT OAuth** for text and image generation. Text model choices come from the local Codex app-server catalog; images use an isolated local Codex image adapter. Huobao reuses the OAuth session managed by Codex CLI, so no API key or OAuth token is exposed to the browser. Text turns are ephemeral and read-only, use `approvalPolicy: never`, and can invoke only allowlisted Huobao data tools. Codex endpoints accept loopback clients only by default.
+
+#### 通过 Chrome 使用 Google Flow（本机图片与视频服务） / Google Flow via Chrome (local image and video provider)
+
+「设置 → AI 服务」也支持 **Google Flow · Chrome Session** 图片与视频服务，无需 Google API Key。先使用带有 `--remote-debugging-port=9222` 的 Chrome 登录 Google；火宝仅在本机读取该 Chrome Profile 的 session，优先调用 Flow RPC，必要时回退到后台 Playwright 自动化。Cookie 保存在本机数据目录，不会返回浏览器或上传到服务端。可为每条配置选择 Google 账号，并可选填已有 Flow Project URL。<br>
+Settings → AI Services also supports **Google Flow · Chrome Session** for image and video generation without a Google API key. Sign in to Google using Chrome started with `--remote-debugging-port=9222`; Huobao reads that Chrome profile's session locally, uses Flow RPC first, and falls back to background Playwright automation when necessary. Cookies remain in the local data directory and are never returned to the browser or uploaded to a server. Each config can select a Google account and optionally reuse an existing Flow project URL.
+
 ---
 
 ## 📖 图文教程 / Visual Walkthrough

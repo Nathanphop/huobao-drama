@@ -3,8 +3,8 @@
  */
 import { Hono } from 'hono'
 import { validAgentTypes } from '../agents/index.js'
+import { generateConfiguredAgent } from '../agents/generate.js'
 import { buildAgentRequestContext } from '../agents/context.js'
-import { mastra } from '../mastra/index.js'
 import { success, badRequest } from '../utils/response.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
@@ -50,12 +50,6 @@ app.post('/:type/chat', async (c) => {
     return badRequest(c, '需要 drama_id 与 episode_id')
   }
 
-  const agent = mastra.getAgent(agentType)
-  if (!agent) {
-    logTaskError('Agent', agentType, { reason: 'agent not found' })
-    return badRequest(c, 'Agent 不存在')
-  }
-
   const requestContext = buildAgentRequestContext({
     episodeId: episode_id,
     dramaId: drama_id,
@@ -66,7 +60,7 @@ app.post('/:type/chat', async (c) => {
   const startTime = performance.now()
 
   try {
-    const result = await agent.generate(
+    const result = await generateConfiguredAgent(agentType,
       [{ role: 'user', content: message }],
       { maxSteps: 20, requestContext },
     )

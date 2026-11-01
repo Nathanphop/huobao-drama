@@ -208,6 +208,10 @@ function startBackend(): void {
     SQLITE_PATH: path.join(currentDataDir, 'huobao.sqlite3'),
     WORKSPACE_PATH: currentWorkspaceDir,
     FRONTEND_DIST: currentFrontendDist,
+    GOOGLE_FLOW_SCRIPTS_DIR: app.isPackaged
+      ? path.join(resources, 'google-flow')
+      : path.join(resources, 'backend', 'scripts', 'google-flow'),
+    GOOGLE_FLOW_SESSION_PATH: path.join(currentDataDir, 'google-flow-session.json'),
   }
   if (app.isPackaged) {
     const exe = process.platform === 'win32' ? '.exe' : ''

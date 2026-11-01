@@ -4,8 +4,10 @@ import { db, getInsertId, schema } from '../db/index.js'
 import { success, notFound, created, badRequest, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { joinProviderUrl } from '../services/adapters/url.js'
-import { isOfficialProvider, parseConfigTemperature } from '../services/ai.js'
+import { isOfficialProvider, parseConfigSettings, parseConfigTemperature } from '../services/ai.js'
 import { redactUrl, logTaskError, logTaskProgress, logTaskSuccess } from '../utils/task-logger.js'
+import { getCodexStatus } from '../services/codex-companion.js'
+import { getGoogleFlowStatus } from '../services/google-flow.js'
 
 const app = new Hono()
 
@@ -19,10 +21,13 @@ function normalizeTemperature(v: any): number | null {
 
 /** 把 settings JSON 中的 temperature 透出为顶层字段，便于前端直接读写 */
 function withParsedFields(r: any) {
+  const settings = parseConfigSettings(r.settings)
   return {
     ...toSnakeCase(r),
     model: r.model ? JSON.parse(r.model) : [],
     temperature: parseConfigTemperature(r.settings),
+    flow_authuser: typeof settings.flowAuthuser === 'string' ? settings.flowAuthuser : '',
+    flow_project_url: typeof settings.flowProjectUrl === 'string' ? settings.flowProjectUrl : '',
   }
 }
 
@@ -147,6 +152,11 @@ app.post('/', async (c) => {
     }
   }
 
+  const settings: Record<string, any> = {}
+  if (temperature !== null) settings.temperature = temperature
+  if (typeof body.flow_authuser === 'string' && /^\d+$/.test(body.flow_authuser)) settings.flowAuthuser = body.flow_authuser
+  if (typeof body.flow_project_url === 'string' && body.flow_project_url.trim()) settings.flowProjectUrl = body.flow_project_url.trim()
+
   const res = await db.insert(schema.aiServiceConfigs).values({
     serviceType: body.service_type,
     provider: body.provider,
@@ -156,7 +166,7 @@ app.post('/', async (c) => {
     model: JSON.stringify(body.model || []),
     priority: body.priority || 0,
     isActive: true,
-    settings: temperature !== null ? JSON.stringify({ temperature }) : null,
+    settings: Object.keys(settings).length ? JSON.stringify(settings) : null,
     createdAt: ts,
     updatedAt: ts,
   })
@@ -170,11 +180,42 @@ app.post('/', async (c) => {
 // POST /ai-configs/test
 app.post('/test', async (c) => {
   const body = await c.req.json()
-  if (!body.service_type || !body.provider || !body.base_url) {
-    return badRequest(c, '需要 service_type、provider 与 base_url')
+  const localProvider = body.provider === 'codex' || body.provider === 'google_flow'
+  if (!body.service_type || !body.provider || (!localProvider && !body.base_url)) {
+    return badRequest(c, localProvider
+      ? '需要 service_type 与 provider'
+      : '需要 service_type、provider 与 base_url')
   }
   if (!isOfficialProvider(body.service_type, body.provider)) {
     return badRequest(c, '不支持的 service_type/provider')
+  }
+
+  if (body.provider === 'codex') {
+    const status = await getCodexStatus()
+    return success(c, {
+      ok: status.connected,
+      reachable: status.connected,
+      status: status.connected ? 'CONNECTED' : 'LOGIN_REQUIRED',
+      status_text: status.connected ? 'Connected' : 'Login required',
+      method: 'LOCAL',
+      url: 'codex://app-server',
+      message: status.detail,
+      response_preview: '',
+    })
+  }
+
+  if (body.provider === 'google_flow') {
+    const status = await getGoogleFlowStatus()
+    return success(c, {
+      ok: status.connected,
+      reachable: status.available,
+      status: status.connected ? 'CONNECTED' : (status.available ? 'LOGIN_REQUIRED' : 'CHROME_9222_REQUIRED'),
+      status_text: status.connected ? 'Connected' : 'Chrome session required',
+      method: 'LOCAL',
+      url: 'google-flow://chrome-9222',
+      message: status.detail,
+      response_preview: status.accounts.map(account => `u/${account.authuser} ${account.email}`).join(', '),
+    })
   }
 
   const model = Array.isArray(body.model) ? body.model[0] : body.model
@@ -282,6 +323,18 @@ app.put('/:id', async (c) => {
     try { settings = existing.settings ? JSON.parse(existing.settings) : {} } catch { settings = {} }
     if (temperature === null) delete settings.temperature
     else settings.temperature = temperature
+    updates.settings = Object.keys(settings).length ? JSON.stringify(settings) : null
+  }
+  if ('flow_authuser' in body || 'flow_project_url' in body) {
+    const settings = parseConfigSettings(updates.settings ?? existing.settings)
+    if ('flow_authuser' in body) {
+      if (typeof body.flow_authuser === 'string' && /^\d+$/.test(body.flow_authuser)) settings.flowAuthuser = body.flow_authuser
+      else delete settings.flowAuthuser
+    }
+    if ('flow_project_url' in body) {
+      if (typeof body.flow_project_url === 'string' && body.flow_project_url.trim()) settings.flowProjectUrl = body.flow_project_url.trim()
+      else delete settings.flowProjectUrl
+    }
     updates.settings = Object.keys(settings).length ? JSON.stringify(settings) : null
   }
 

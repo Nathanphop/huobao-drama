@@ -56,9 +56,9 @@ test('backend rejects unsupported providers at DB and route boundaries', () => {
   const route = read('src/routes/aiConfigs.ts')
 
   assert.match(ai, /officialProviders/)
-  assert.match(ai, /text:\s*\[\s*'openai',\s*'gemini',\s*'volcengine'\s*\]/)
-  assert.match(ai, /image:\s*\[\s*'openai',\s*'gemini',\s*'volcengine'\s*\]/)
-  assert.match(ai, /video:\s*\[\s*'volcengine',\s*'minimax',\s*'aliyun'\s*\]/)
+  assert.match(ai, /text:\s*\[\s*'openai',\s*'gemini',\s*'volcengine',\s*'codex'\s*\]/)
+  assert.match(ai, /image:\s*\[\s*'openai',\s*'gemini',\s*'volcengine',\s*'codex',\s*'google_flow'\s*\]/)
+  assert.match(ai, /video:\s*\[\s*'volcengine',\s*'minimax',\s*'aliyun',\s*'google_flow'\s*\]/)
   assert.doesNotMatch(ai, /'deepseek'/)
   assert.doesNotMatch(ai, /'ali'/)
   assert.doesNotMatch(ai, /'vidu'/)
@@ -83,7 +83,8 @@ test('AI config routes reject unsupported service/provider pairs in create, test
   assert.match(createRoute, /isOfficialProvider\(body\.service_type,\s*body\.provider\)/)
   assert.match(createRoute, /badRequest\(c,\s*'不支持的 service_type\/provider'\)/)
 
-  assert.match(testRoute, /if \(!body\.service_type \|\| !body\.provider \|\| !body\.base_url\)/)
+  assert.match(testRoute, /const localProvider = body\.provider === 'codex' \|\| body\.provider === 'google_flow'/)
+  assert.match(testRoute, /!localProvider && !body\.base_url/)
   assert.match(testRoute, /isOfficialProvider\(body\.service_type,\s*body\.provider\)/)
   assert.match(testRoute, /badRequest\(c,\s*'不支持的 service_type\/provider'\)/)
 

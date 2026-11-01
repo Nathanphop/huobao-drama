@@ -18,6 +18,7 @@ asarUnpack:
 extraResources:
   - { from: resources/frontend, to: frontend }
   - { from: resources/workspace-template, to: workspace-template }
+  - { from: resources/google-flow, to: google-flow }
   # 按系统与 CPU 架构选择 ffmpeg/ffprobe，避免 Intel Mac 包带入 ARM 二进制。
   - { from: "resources/bin-${os}-${arch}", to: bin }
 npmRebuild: true

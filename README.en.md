@@ -206,6 +206,10 @@ All AI features (text/image/video) require model services to be configured first
 
 Once configured, the banner disappears and you can start producing episodes.
 
+#### Codex via ChatGPT (local text and image provider)
+
+Settings → AI Services supports **Codex · ChatGPT OAuth** for text and image generation. Text model choices come from the local Codex app-server catalog; images use an isolated local Codex image adapter. Huobao reuses the OAuth session already managed by Codex CLI, so no API key or OAuth token is exposed to the browser. Text turns are ephemeral and read-only, use `approvalPolicy: never`, and can invoke only allowlisted Huobao data tools. Codex endpoints accept loopback clients only by default.
+
 ---
 
 ## 📖 Visual Walkthrough

@@ -31,10 +31,41 @@ test('style presets route is mounted and implements CRUD', () => {
   assert.match(route, /app\.delete\('\/:id'/)
   // value 唯一约束 + 格式校验 + 查重
   assert.match(route, /VALUE_PATTERN/)
-  assert.match(route, /风格 key 已存在/)
+  assert.match(route, /Style key already exists/)
   // GET 支持 ?all=1 且默认过滤停用项
   assert.match(route, /query\('all'\)/)
   assert.match(route, /r\.isActive/)
+})
+
+test('built-in style preset names and descriptions are English-only', () => {
+  const schema = read('src/db/sqlite-schema.ts')
+  const seedStart = schema.indexOf('export const stylePresetSeeds = [')
+  const seedEnd = schema.indexOf('const LEGACY_SEED_METADATA', seedStart)
+  const seedBlock = schema.slice(seedStart, seedEnd)
+
+  assert.notEqual(seedStart, -1)
+  assert.notEqual(seedEnd, -1)
+  assert.doesNotMatch(seedBlock, /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/)
+  assert.match(seedBlock, /name: '3D Animated Drama'/)
+  assert.match(seedBlock, /name: 'Japanese Cel Anime'/)
+  assert.match(seedBlock, /name: 'Black-and-White Manga'/)
+  assert.match(schema, /UPGRADE_METADATA_SQL/)
+})
+
+test('style presets support uploaded and AI-generated preview artwork', () => {
+  const schema = read('src/db/schema.ts')
+  const sqlite = read('src/db/sqlite-schema.ts')
+  const route = read('src/routes/stylePresets.ts')
+  const generation = read('src/services/generation.ts')
+
+  assert.match(schema, /previewImageUrl: text\('preview_image_url'\)/)
+  assert.match(sqlite, /ALTER TABLE style_presets ADD COLUMN preview_image_url TEXT/)
+  assert.match(route, /app\.post\('\/:id\/generate-preview'/)
+  assert.match(route, /app\.post\('\/:id\/preview'/)
+  assert.match(route, /app\.delete\('\/:id\/preview'/)
+  assert.match(route, /saveUploadedFile\(data, 'style-previews'/)
+  assert.match(generation, /stylePresetId/)
+  assert.match(generation, /previewImageUrl: localPath/)
 })
 
 test('drama style prompt is injected into image prompt composition', () => {

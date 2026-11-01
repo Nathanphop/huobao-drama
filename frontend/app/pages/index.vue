@@ -166,7 +166,14 @@
             <label class="field">
               <span class="field-label">{{ t('index.createDialog.style') }}</span>
               <BaseSelect v-model="form.style" :options="styleSelectOptions" :placeholder="t('index.createDialog.stylePlaceholder')" searchable />
-              <span v-if="selectedStyleDesc" class="field-hint">{{ selectedStyleDesc }}</span>
+              <div v-if="selectedStylePreview" class="style-choice-preview">
+                <img :src="thumbOf(selectedStylePreview)" :alt="`${selectedStyle?.name || 'Style'} preview`" @error="thumbFallback($event, selectedStylePreview)" />
+                <div>
+                  <strong>{{ selectedStyle?.name }}</strong>
+                  <span>{{ selectedStyleDesc }}</span>
+                </div>
+              </div>
+              <span v-if="selectedStyleDesc && !selectedStylePreview" class="field-hint">{{ selectedStyleDesc }}</span>
             </label>
             <label class="field">
               <span class="field-label">{{ t('index.createDialog.aspectRatio') }}</span>
@@ -203,6 +210,7 @@ import { toastError } from '~/composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { Clock, CircleHelp } from 'lucide-vue-next'
 import { dramaAPI, stylePresetAPI } from '~/composables/useApi'
+import { thumbOf, thumbFallback } from '~/composables/useMedia'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { startTour, autoTour } from '~/composables/useTour'
 
@@ -224,7 +232,13 @@ const deletingDrama = ref(false)
 const form = ref({ title: '', style: '', aspect_ratio: '16:9' })
 const stylePresets = ref([])
 const styleSelectOptions = computed(() => stylePresets.value.map(p => ({ label: p.name, value: p.value })))
-const selectedStyleDesc = computed(() => stylePresets.value.find(p => p.value === form.value.style)?.description || '')
+const selectedStyle = computed(() => stylePresets.value.find(p => p.value === form.value.style) || null)
+const selectedStyleDesc = computed(() => selectedStyle.value?.description || '')
+const selectedStylePreview = computed(() => {
+  const raw = String(selectedStyle.value?.preview_image_url || selectedStyle.value?.previewImageUrl || '')
+  if (!raw) return ''
+  return raw.startsWith('static/') ? `/${raw}` : raw
+})
 // 常量数组 label 渲染时求值（语言切换即时生效），value 为逻辑值
 const aspectRatioOptions = computed(() => ([
   { label: t('index.ratio.landscape'), value: '16:9' },
@@ -639,6 +653,20 @@ onMounted(() => setTimeout(() => autoTour('index', INDEX_TOUR, t), 600))
 .field-label { font-size: 12px; font-weight: 600; color: var(--text-1); }
 .required { color: var(--error); }
 .field-hint { font-size: 11px; color: var(--text-3); line-height: 1.5; }
+.style-choice-preview {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+.style-choice-preview img { width: 112px; height: 76px; object-fit: cover; border-radius: 8px; }
+.style-choice-preview div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.style-choice-preview strong { color: var(--text-0); font-size: 13px; }
+.style-choice-preview span { color: var(--text-3); font-size: 11px; line-height: 1.45; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
 @media (max-width: 900px) {

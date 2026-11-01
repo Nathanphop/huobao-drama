@@ -39,6 +39,7 @@ data/storage/
 
 # Config
 configs/config.yaml
+backend/scripts/google-flow/session.json
 
 # Misc
 tmp/

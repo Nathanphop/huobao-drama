@@ -79,6 +79,8 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  flowAuthuser?: string | null
+  flowProjectUrl?: string | null
 }
 
 export interface ImageGenerationRecord {

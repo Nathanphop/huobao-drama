@@ -145,6 +145,32 @@ export const aiConfigAPI = {
   test: (d: any) => api.post('/ai-configs/test', d),
 }
 
+export const codexAPI = {
+  status: () => api.get<{ available: boolean; connected: boolean; detail: string }>('/codex/status'),
+  login: () => api.post<{ available: boolean; connected: boolean; detail: string }>('/codex/login', {}),
+  models: () => api.get<{
+    text: Array<{ id: string; displayName: string; description: string; isDefault: boolean; inputModalities: string[] }>
+    image: Array<{ id: string; displayName: string; description: string; isDefault: boolean; inputModalities: string[] }>
+    textSource: string
+    imageSource: string
+  }>('/codex/models'),
+}
+
+export const googleFlowAPI = {
+  status: () => api.get<{
+    available: boolean
+    connected: boolean
+    detail: string
+    accounts: Array<{ authuser: string; email: string; label: string }>
+    cdpEndpoint: string
+  }>('/google-flow/status'),
+  refresh: (authuser = '0') => api.post('/google-flow/refresh', { authuser }),
+  models: () => api.get<{
+    image: Array<{ id: string; displayName: string; isDefault: boolean }>
+    video: Array<{ id: string; displayName: string; isDefault: boolean }>
+  }>('/google-flow/models'),
+}
+
 // lang 缺省/为 zh 时读写基础版（不带 query，保持原请求形态）
 const langQ = (lang?: string) => (lang && lang !== 'zh' ? `?lang=${lang}` : '')
 
@@ -167,6 +193,9 @@ export const stylePresetAPI = {
   list: (all = false) => api.get(`/style-presets${all ? '?all=1' : ''}`),
   create: (d: any) => api.post('/style-presets', d),
   update: (id: number, d: any) => api.put(`/style-presets/${id}`, d),
+  generatePreview: (id: number, d: { subject_prompt?: string; model?: string; config_id?: number } = {}) => api.post(`/style-presets/${id}/generate-preview`, d),
+  uploadPreview: (id: number, file: File) => uploadReq<{ preview_image_url: string }>(`/style-presets/${id}/preview`, file),
+  removePreview: (id: number) => api.del(`/style-presets/${id}/preview`),
   del: (id: number) => api.del(`/style-presets/${id}`),
 }
 

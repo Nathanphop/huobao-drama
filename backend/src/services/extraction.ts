@@ -3,8 +3,8 @@
  * 角色 / 场景 / 道具 可分别单独提取，同一集的不同类型可并行
  * 任务状态为进程内内存态：后端重启后运行中的任务状态丢失（Agent 调用本身已被中断）
  */
-import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import { generateConfiguredAgent } from '../agents/generate.js'
 import { logTaskError, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 export type ExtractTarget = 'characters' | 'scenes' | 'props'
@@ -37,15 +37,13 @@ export function startExtraction(episodeId: number, dramaId: number, target: Extr
 
   logTaskStart('Extract', target, { episodeId, dramaId, model: opts.model || undefined, configId: opts.configId || undefined })
   ;(async () => {
-    const agent = mastra.getAgent('extractor')
-    if (!agent) throw new Error('提取 Agent 不可用')
     const requestContext = buildAgentRequestContext({
       episodeId,
       dramaId,
       modelOverride: opts.model || undefined,
       textConfigId: opts.configId || undefined,
     })
-    return agent.generate([{ role: 'user', content: EXTRACT_MESSAGES[target] }], {
+    return generateConfiguredAgent('extractor', [{ role: 'user', content: EXTRACT_MESSAGES[target] }], {
       maxSteps: 20,
       requestContext,
       // 逐步打印 Agent 进展：调用了哪些工具、输出了什么

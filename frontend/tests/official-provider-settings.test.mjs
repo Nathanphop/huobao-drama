@@ -28,7 +28,7 @@ test('settings page exposes official provider templates only', () => {
   assert.doesNotMatch(useApi, /huobaoPreset/i)
   assert.doesNotMatch(useApi, /\/huobao-preset/)
 
-  assert.match(settingsPage, /const providers = \['gemini', 'openai', 'volcengine', 'minimax', 'aliyun'\]/)
+  assert.match(settingsPage, /const providers = \['gemini', 'openai', 'codex', 'google_flow', 'volcengine', 'minimax', 'aliyun'\]/)
   assert.match(settingsPage, /https:\/\/generativelanguage\.googleapis\.com/)
   assert.match(settingsPage, /https:\/\/api\.openai\.com/)
   assert.match(settingsPage, /https:\/\/ark\.cn-beijing\.volces\.com/)
@@ -38,14 +38,14 @@ test('settings page exposes official provider templates only', () => {
   assert.doesNotMatch(settingsPage, /https:\/\/api\.vidu\.com/)
   assert.doesNotMatch(settingsPage, /\['ali'|'ali',|, 'ali'\]/)
   assert.match(settingsPage, /火宝快捷配置/)
-  assert.match(settingsPage, /https:\/\/api\.firemux\.com/)
+  assert.match(settingsPage, /https:\/\/api\.firemux\.\$\{huobaoRegion\.value\}/)
   assert.match(settingsPage, /applyHuobaoQuickConfig/)
   assert.doesNotMatch(settingsPage, /https:\/\/api\.minimax\.io/)
 })
 
 test('settings page offers official default model IDs', () => {
   assert.match(settingsPage, /gemini-3\.1-pro-preview/)
-  assert.match(settingsPage, /gemini-3\.5-flash/)
+  assert.match(settingsPage, /gemini-3\.8-flash/)
   assert.match(settingsPage, /gemini-3-flash-preview/)
   assert.match(settingsPage, /gpt-5\.6-terra/)
   assert.match(settingsPage, /deepseek-v4-flash/)
@@ -73,13 +73,15 @@ test('settings page offers official default model IDs', () => {
   assert.doesNotMatch(settingsPage, /speech-2\.8-hd/)
 })
 
-test('only text service configs expose the connection test button', () => {
-  assert.match(settingsPage, /v-if="st\.type === 'text'" class="btn btn-ghost btn-sm" @click="testExistingCfg\(c\)">\{\{ t\('settings\.ai\.test'\) \}\}/)
+test('text configs and local image/video configs expose the connection test button', () => {
+  assert.match(settingsPage, /v-if="st\.type === 'text' \|\| c\.provider === 'codex' \|\| c\.provider === 'google_flow'" class="btn btn-ghost btn-sm" @click="testExistingCfg\(c\)">\{\{ t\('settings\.ai\.test'\) \}\}/)
 })
 
 test('settings page offers the supported official provider presets', () => {
   assert.match(providerPresetBlock('text'), /deepseek-v4-pro/)
+  assert.match(providerPresetBlock('text'), /codex: \{ label: 'Codex · ChatGPT OAuth'/)
   assert.doesNotMatch(providerPresetBlock('text'), /minimax/i)
+  assert.match(providerPresetBlock('image'), /codex: \{ label: 'Codex · ChatGPT OAuth'/)
   assert.doesNotMatch(providerPresetBlock('image'), /'ali'|minimax/i)
   assert.match(providerPresetBlock('video'), /volcengine/)
   assert.match(providerPresetBlock('video'), /minimax/)
@@ -88,11 +90,23 @@ test('settings page offers the supported official provider presets', () => {
   assert.doesNotMatch(settingsPage, /audio:\s*\{/)
 })
 
+test('Codex uses local OAuth without API keys in the browser', () => {
+  assert.match(settingsPage, /codexAPI\.login\(\)/)
+  assert.match(settingsPage, /v-if="!isLocalProvider\(cfgForm\.provider\)" class="field"><span class="field-label">API Key/)
+  assert.match(settingsPage, /codexSecurity/)
+  assert.match(useApi, /\/codex\/status/)
+  assert.match(useApi, /\/codex\/login/)
+  assert.match(useApi, /\/codex\/models/)
+  assert.match(settingsPage, /codexModelIds/)
+  assert.match(settingsPage, /video: \['google_flow', 'volcengine', 'minimax', 'aliyun'\]/)
+})
+
 test('Huobao quick config includes Wan 3.0 through the Qwen gateway route', () => {
-  const quickStart = settingsPage.indexOf('const huobaoQuickConfigs = [')
+  const quickStart = settingsPage.indexOf('const huobaoQuickConfigs = computed(() => {')
   assert.notEqual(quickStart, -1)
-  const quickConfigs = settingsPage.slice(quickStart, settingsPage.indexOf('\n]', quickStart) + 2)
+  const quickConfigs = settingsPage.slice(quickStart, settingsPage.indexOf('\n})', quickStart) + 3)
+  assert.match(quickConfigs, /const base = huobaoSiteUrl\.value/)
   assert.match(quickConfigs, /provider:\s*'aliyun'/)
-  assert.match(quickConfigs, /base_url:\s*'https:\/\/api\.firemux\.com\/qwen'/)
-  assert.match(quickConfigs, /model:\s*\['wan3\.0-video-prime', 'wan3\.0-video'\]/)
+  assert.match(quickConfigs, /base_url:\s*`\$\{base\}\/qwen`/)
+  assert.match(quickConfigs, /model:\s*\['wan3\.0-video', 'wan3\.0-video-prime'\]/)
 })

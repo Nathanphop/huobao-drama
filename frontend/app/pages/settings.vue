@@ -125,6 +125,49 @@
               </div>
             </div>
           </section>
+          <section class="card codex-card">
+            <div class="codex-card-main">
+              <div class="provider-badge codex-badge"><Bot :size="17" /></div>
+              <div>
+                <div class="setup-title">{{ t('settings.ai.codexTitle') }}</div>
+                <div class="setup-desc">{{ t('settings.ai.codexDesc') }}</div>
+              </div>
+            </div>
+            <div class="codex-card-actions">
+              <span :class="['tag', codexStatus.connected ? 'tag-success' : 'tag-error']">
+                {{ codexStatus.connected ? t('settings.ai.codexConnected') : t('settings.ai.codexDisconnected') }}
+              </span>
+              <button class="btn btn-ghost btn-sm" :disabled="codexChecking" @click="loadCodexStatus">
+                <Loader2 v-if="codexChecking" :size="12" class="animate-spin" />
+                <RefreshCw v-else :size="12" />
+                {{ t('settings.ai.codexRefresh') }}
+              </button>
+              <button v-if="!codexStatus.connected" class="btn btn-primary btn-sm" :disabled="codexConnecting" @click="connectCodex">
+                <Loader2 v-if="codexConnecting" :size="12" class="animate-spin" />
+                <ExternalLink v-else :size="12" />
+                {{ t('settings.ai.codexConnect') }}
+              </button>
+            </div>
+          </section>
+          <section class="card codex-card">
+            <div class="codex-card-main">
+              <div class="provider-badge codex-badge"><ImageIcon :size="17" /></div>
+              <div>
+                <div class="setup-title">{{ t('settings.ai.flowTitle') }}</div>
+                <div class="setup-desc">{{ t('settings.ai.flowDesc') }}</div>
+              </div>
+            </div>
+            <div class="codex-card-actions">
+              <span :class="['tag', googleFlowStatus.connected ? 'tag-success' : 'tag-error']">
+                {{ googleFlowStatus.connected ? t('settings.ai.flowConnected') : t('settings.ai.flowDisconnected') }}
+              </span>
+              <button class="btn btn-ghost btn-sm" :disabled="googleFlowChecking" @click="loadGoogleFlowStatus">
+                <Loader2 v-if="googleFlowChecking" :size="12" class="animate-spin" />
+                <RefreshCw v-else :size="12" />
+                {{ t('settings.ai.codexRefresh') }}
+              </button>
+            </div>
+          </section>
           <section class="card setup-panel">
             <div class="setup-panel-head compact">
               <div>
@@ -161,12 +204,18 @@
                 <div class="config-main">
                   <div class="config-line">
                     <span class="config-name">{{ c.name || `${c.provider}-${c.service_type}` }}</span>
-                    <span :class="['tag', c.api_key ? 'tag-success' : 'tag-error']">{{ c.api_key ? t('settings.ai.hasKey') : t('settings.ai.noKey') }}</span>
+                    <span v-if="c.provider === 'codex'" :class="['tag', codexStatus.connected ? 'tag-success' : 'tag-error']">
+                      {{ codexStatus.connected ? t('settings.ai.codexConnected') : t('settings.ai.codexDisconnected') }}
+                    </span>
+                    <span v-else-if="c.provider === 'google_flow'" :class="['tag', googleFlowStatus.connected ? 'tag-success' : 'tag-error']">
+                      {{ googleFlowStatus.connected ? t('settings.ai.flowConnected') : t('settings.ai.flowDisconnected') }}
+                    </span>
+                    <span v-else :class="['tag', c.api_key ? 'tag-success' : 'tag-error']">{{ c.api_key ? t('settings.ai.hasKey') : t('settings.ai.noKey') }}</span>
                     <span v-if="!c.is_active" class="tag">{{ t('settings.common.disabled') }}</span>
                   </div>
                   <div class="config-models">
                     <button
-                      v-for="m in c.model" :key="m" type="button"
+                      v-for="m in configModelIds(st.type, c)" :key="m" type="button"
                       :class="['cfg-model-chip mono', { 'is-default': isDefaultModel(st.type, c, m) }]"
                       :title="isDefaultModel(st.type, c, m) ? t('settings.ai.currentDefault') : t('settings.ai.setDefault')"
                       @click="setDefaultModel(st.type, c, m)"
@@ -175,9 +224,9 @@
                       {{ m }}
                     </button>
                   </div>
-                  <div class="config-sub mono truncate">{{ c.base_url || t('settings.ai.noBaseUrl') }}</div>
+                  <div class="config-sub mono truncate">{{ configSub(c) }}</div>
                 </div>
-                <button v-if="st.type === 'text'" class="btn btn-ghost btn-sm" @click="testExistingCfg(c)">{{ t('settings.ai.test') }}</button>
+                <button v-if="st.type === 'text' || c.provider === 'codex' || c.provider === 'google_flow'" class="btn btn-ghost btn-sm" @click="testExistingCfg(c)">{{ t('settings.ai.test') }}</button>
                 <label class="config-switch">
                   <input type="checkbox" class="sr-only" :checked="c.is_active" @change="toggleCfg(c)">
                   <span class="switch" :class="{ on: c.is_active }"></span>
@@ -205,7 +254,15 @@
               <button class="btn btn-ghost btn-sm ml-auto" @click="startAddStyle"><Plus :size="13" /> {{ t('common.add') }}</button>
             </div>
             <div v-for="p in stylePresets" :key="p.id" class="config-row">
-              <div class="provider-badge style-badge"><Palette :size="15" /></div>
+              <div class="style-preview-thumb">
+                <img
+                  v-if="p.preview_image_url"
+                  :src="thumbOf(stylePreviewUrl(p))"
+                  :alt="`${p.name} style preview`"
+                  @error="thumbFallback($event, stylePreviewUrl(p))"
+                />
+                <Palette v-else :size="18" />
+              </div>
               <div class="config-main">
                 <div class="config-line">
                   <span class="config-name">{{ p.name }}</span>
@@ -517,8 +574,49 @@
             <input v-model.number="cfgForm.priority" class="input" type="number" min="0" max="999" />
             <span class="field-hint">{{ t('settings.cfg.priorityHint') }}</span>
           </label>
-          <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" placeholder="sk-..." /></label>
-          <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
+          <div v-if="cfgForm.provider === 'codex'" class="codex-dialog-panel">
+            <div>
+              <div class="field-label">{{ t('settings.ai.codexTitle') }}</div>
+              <div class="field-hint">{{ t('settings.ai.codexSecurity') }}</div>
+            </div>
+            <span :class="['tag', codexStatus.connected ? 'tag-success' : 'tag-error']">
+              {{ codexStatus.connected ? t('settings.ai.codexConnected') : t('settings.ai.codexDisconnected') }}
+            </span>
+            <button v-if="!codexStatus.connected" type="button" class="btn btn-primary btn-sm" :disabled="codexConnecting" @click="connectCodex">
+              <Loader2 v-if="codexConnecting" :size="12" class="animate-spin" />
+              {{ t('settings.ai.codexConnect') }}
+            </button>
+            <button v-else type="button" class="btn btn-ghost btn-sm" :disabled="codexModelsLoading" @click="loadCodexModels">
+              <Loader2 v-if="codexModelsLoading" :size="12" class="animate-spin" />
+              <RefreshCw v-else :size="12" />
+              {{ t('settings.ai.codexRefresh') }}
+            </button>
+          </div>
+          <div v-if="cfgForm.provider === 'google_flow'" class="codex-dialog-panel flow-dialog-panel">
+            <div>
+              <div class="field-label">{{ t('settings.ai.flowTitle') }}</div>
+              <div class="field-hint">{{ t('settings.ai.flowSecurity') }}</div>
+            </div>
+            <span :class="['tag', googleFlowStatus.connected ? 'tag-success' : 'tag-error']">
+              {{ googleFlowStatus.connected ? t('settings.ai.flowConnected') : t('settings.ai.flowDisconnected') }}
+            </span>
+            <button type="button" class="btn btn-ghost btn-sm" :disabled="googleFlowChecking" @click="loadGoogleFlowStatus">
+              <Loader2 v-if="googleFlowChecking" :size="12" class="animate-spin" />
+              <RefreshCw v-else :size="12" />
+              {{ t('settings.ai.codexRefresh') }}
+            </button>
+          </div>
+          <label v-if="cfgForm.provider === 'google_flow'" class="field">
+            <span class="field-label">{{ t('settings.ai.flowAccount') }}</span>
+            <BaseSelect v-model="cfgForm.flow_authuser" :options="flowAccountOptions" :placeholder="t('settings.ai.flowAccountPlaceholder')" searchable />
+          </label>
+          <label v-if="cfgForm.provider === 'google_flow'" class="field">
+            <span class="field-label">{{ t('settings.ai.flowProject') }}</span>
+            <input v-model="cfgForm.flow_project_url" class="input" placeholder="https://flow.google.com/project/..." />
+            <span class="field-hint">{{ t('settings.ai.flowProjectHint') }}</span>
+          </label>
+          <label v-if="!isLocalProvider(cfgForm.provider)" class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" placeholder="sk-..." /></label>
+          <label v-if="!isLocalProvider(cfgForm.provider)" class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
           <div class="field">
             <span class="field-label">{{ t('settings.cfg.models') }}</span>
             <div v-if="cfgForm.models.length" class="model-chips">
@@ -528,11 +626,11 @@
                 :title="t('settings.cfg.modelChipHint')"
                 @click="pinModelTop(i)"
               >
-                {{ m }}<em v-if="i === 0">{{ t('common.default') }}</em>
-                <button type="button" class="model-chip-x" :title="t('common.delete')" @click.stop="removeModel(i)"><X :size="11" /></button>
+                {{ modelDisplayName(cfgForm.service_type, m) }}<em v-if="i === 0">{{ t('common.default') }}</em>
+                <button v-if="!isLocalProvider(cfgForm.provider)" type="button" class="model-chip-x" :title="t('common.delete')" @click.stop="removeModel(i)"><X :size="11" /></button>
               </span>
             </div>
-            <div class="model-add-row">
+            <div v-if="!isLocalProvider(cfgForm.provider)" class="model-add-row">
               <input
                 v-model="modelInput" class="input" :placeholder="t('settings.cfg.modelPlaceholder')"
                 @keydown.enter.prevent="addModel"
@@ -542,7 +640,7 @@
             </div>
             <span class="field-hint">{{ t('settings.cfg.modelsHint') }}</span>
           </div>
-          <label v-if="cfgForm.service_type === 'text'" class="field">
+          <label v-if="cfgForm.service_type === 'text' && cfgForm.provider !== 'codex'" class="field">
             <span class="field-label">Temperature <span class="dim">({{ t('settings.cfg.tempHint') }})</span></span>
             <input v-model="cfgForm.temperature" class="input" type="number" step="0.1" min="0" max="2" :placeholder="t('settings.cfg.tempPlaceholder')" />
             <span class="field-hint">{{ t('settings.cfg.tempNote') }}</span>
@@ -622,6 +720,39 @@
             <span class="field-label">{{ t('settings.styleDialog.description') }}</span>
             <input v-model="styleForm.description" class="input" :placeholder="t('settings.styleDialog.descPlaceholder')" />
           </label>
+          <div class="field">
+            <span class="field-label">{{ t('settings.styleDialog.preview') }}</span>
+            <div class="style-preview-editor">
+              <div class="style-preview-canvas">
+                <img
+                  v-if="styleForm.preview_image_url"
+                  :src="stylePreviewUrl(styleForm)"
+                  :alt="`${styleForm.name || 'Style'} preview`"
+                />
+                <div v-else class="style-preview-empty">
+                  <ImageIcon :size="24" />
+                  <span>{{ t('settings.styleDialog.previewEmpty') }}</span>
+                </div>
+              </div>
+              <div class="style-preview-actions">
+                <button type="button" class="btn btn-primary btn-sm" :disabled="!styleEditId || stylePreviewGenerating || stylePreviewUploading" @click="generateStylePreview">
+                  <Loader2 v-if="stylePreviewGenerating" :size="12" class="animate-spin" />
+                  <Sparkles v-else :size="12" />
+                  {{ stylePreviewGenerating ? t('settings.styleDialog.generating') : t('settings.styleDialog.generatePreview') }}
+                </button>
+                <button type="button" class="btn btn-sm" :disabled="!styleEditId || stylePreviewGenerating || stylePreviewUploading" @click="stylePreviewInput?.click()">
+                  <Loader2 v-if="stylePreviewUploading" :size="12" class="animate-spin" />
+                  <Upload v-else :size="12" />
+                  {{ t('settings.styleDialog.uploadPreview') }}
+                </button>
+                <button v-if="styleForm.preview_image_url" type="button" class="btn btn-ghost btn-sm" :disabled="stylePreviewGenerating || stylePreviewUploading" @click="removeStylePreview">
+                  <Trash2 :size="12" /> {{ t('settings.styleDialog.removePreview') }}
+                </button>
+                <input ref="stylePreviewInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp" @change="uploadStylePreview" />
+                <span class="field-hint">{{ styleEditId ? t('settings.styleDialog.previewHint') : t('settings.styleDialog.previewSaveFirst') }}</span>
+              </div>
+            </div>
+          </div>
           <label class="field">
             <span class="field-label">{{ t('settings.styleDialog.sort') }}</span>
             <input v-model.number="styleForm.sort_order" class="input" type="number" min="0" max="999" />
@@ -684,12 +815,13 @@
 </template>
 
 <script setup>
-import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, Sparkles, Palette, ExternalLink, Star, HardDrive, Database, RefreshCw, Download, Languages, SunMoon, X } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, Sparkles, Palette, ExternalLink, Star, HardDrive, Database, RefreshCw, Download, Languages, SunMoon, X, Upload, Image as ImageIcon } from 'lucide-vue-next'
 import BaseSelect from '~/components/BaseSelect.vue'
 import { toast } from 'vue-sonner'
 import { toastError } from '~/composables/useToast'
 import { useI18n } from 'vue-i18n'
-import { aiConfigAPI, promptAPI, skillsAPI, storageAPI, stylePresetAPI, settingsAPI, serverUpdateAPI } from '~/composables/useApi'
+import { aiConfigAPI, codexAPI, googleFlowAPI, promptAPI, skillsAPI, storageAPI, stylePresetAPI, settingsAPI, serverUpdateAPI, taskAPI } from '~/composables/useApi'
+import { thumbOf, thumbFallback } from '~/composables/useMedia'
 import { useDesktopBridge } from '~/composables/useDesktopBridge'
 import { useMigrateState } from '~/composables/useMigrateState'
 import { useTheme } from '~/composables/useTheme'
@@ -718,10 +850,18 @@ const cfgTesting = ref(false)
 const cfgTestResult = ref(null)
 const huobaoApiKey = ref('')
 const huobaoSaving = ref(false)
+const codexStatus = reactive({ available: false, connected: false, detail: '' })
+const codexChecking = ref(false)
+const codexConnecting = ref(false)
+const codexModelsLoading = ref(false)
+const codexModels = reactive({ text: [], image: [], textSource: '', imageSource: '' })
+const googleFlowStatus = reactive({ available: false, connected: false, detail: '', accounts: [], cdpEndpoint: 'http://127.0.0.1:9222' })
+const googleFlowChecking = ref(false)
+const googleFlowModels = reactive({ image: [], video: [] })
 // 火宝节点选择：默认跟随界面语言（中文→国内 .cn，其他→国外 .com），一键配置与取 Key 链接共用
 const huobaoRegion = ref(locale.value?.startsWith('zh') ? 'cn' : 'com')
 const huobaoSiteUrl = computed(() => `https://api.firemux.${huobaoRegion.value}`)
-const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', models: [], service_type: 'text', priority: 0, temperature: '' })
+const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', models: [], service_type: 'text', priority: 0, temperature: '', flow_authuser: '0', flow_project_url: '' })
 // 模型标签编辑器：首位即默认模型；输入框支持回车添加、逗号/换行批量粘贴
 const modelInput = ref('')
 function addModel() {
@@ -749,8 +889,14 @@ const serviceTypes = computed(() => [
   { type: 'image', label: t('common.serviceType.image') },
   { type: 'video', label: t('common.serviceType.video') },
 ])
-const providers = ['gemini', 'openai', 'volcengine', 'minimax', 'aliyun']
-const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
+const providers = ['gemini', 'openai', 'codex', 'google_flow', 'volcengine', 'minimax', 'aliyun']
+const providersByService = {
+  text: ['gemini', 'openai', 'codex', 'volcengine'],
+  image: ['gemini', 'openai', 'codex', 'google_flow', 'volcengine'],
+  video: ['google_flow', 'volcengine', 'minimax', 'aliyun'],
+}
+const providerSelectOptions = computed(() =>
+  (providersByService[cfgForm.service_type] || providers).map(p => ({ label: p, value: p })))
 const serviceMeta = computed(() => ({
   text: { label: t('common.serviceType.text'), desc: t('settings.ai.meta.text') },
   image: { label: t('common.serviceType.image'), desc: t('settings.ai.meta.image') },
@@ -760,12 +906,16 @@ const providerPresets = {
   text: {
     gemini: { label: 'Gemini 官方', baseUrl: 'https://generativelanguage.googleapis.com', models: ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview'] },
     openai: { label: 'OpenAI 官方', baseUrl: 'https://api.openai.com', models: ['deepseek-v4-pro', 'gpt-5.6-terra'] },
+    codex: { label: 'Codex · ChatGPT OAuth', baseUrl: '', models: [] },
   },
   image: {
     gemini: { label: 'Gemini 官方', baseUrl: 'https://generativelanguage.googleapis.com', models: ['gemini-3-pro-image', 'gemini-3.1-flash-image'] },
     openai: { label: 'OpenAI 官方', baseUrl: 'https://api.openai.com', models: ['gpt-image-2'] },
+    codex: { label: 'Codex · ChatGPT OAuth', baseUrl: '', models: [] },
+    google_flow: { label: 'Google Flow · Chrome Session', baseUrl: '', models: ['Nano Banana 2.1', 'Nano Banana Pro', 'Nano Banana 2 Lite'] },
   },
   video: {
+    google_flow: { label: 'Google Flow · Chrome Session', baseUrl: '', models: ['Veo 3.1 - Lite', 'Veo 3.1 - Fast', 'Veo 3.1 - Quality', 'Omni 1.1 Flash'] },
     aliyun: { label: '阿里云百炼 Wan 3.0', baseUrl: 'https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com', models: ['wan3.0-video', 'wan3.0-video-prime'] },
     volcengine: { label: 'Seedance 2.0 官方', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['doubao-seedance-2-0-mini-260615', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128'] },
     minimax: { label: 'MiniMax H3 官方', baseUrl: 'https://api.minimaxi.com', models: ['MiniMax-H3'] },
@@ -787,6 +937,31 @@ const huobaoQuickConfigs = computed(() => {
 function byType(t) { return cfgs.value.filter(c => c.service_type === t) }
 function countActive(t) { return byType(t).filter(c => c.is_active).length }
 function fmtModel(m) { return Array.isArray(m) ? m.join(', ') : m || '—' }
+function isLocalProvider(provider) { return provider === 'codex' || provider === 'google_flow' }
+function configSub(c) {
+  if (c.provider === 'codex') return t('settings.ai.codexLocal')
+  if (c.provider === 'google_flow') {
+    const account = googleFlowStatus.accounts.find(item => item.authuser === String(c.flow_authuser || '0'))
+    return `${account?.email || `Chrome u/${c.flow_authuser || '0'}`} · RPC-first`
+  }
+  return c.base_url || t('settings.ai.noBaseUrl')
+}
+const flowAccountOptions = computed(() => googleFlowStatus.accounts.map(account => ({
+  label: `${account.email} (u/${account.authuser})`,
+  value: account.authuser,
+})))
+function codexModelEntries(type) { return type === 'image' ? codexModels.image : codexModels.text }
+function codexModelIds(type) { return codexModelEntries(type).map(model => model.id) }
+function configModelIds(type, config) {
+  if (config.provider === 'codex') {
+    const live = codexModelIds(type)
+    if (live.length) return live
+  }
+  return Array.isArray(config.model) ? config.model : []
+}
+function modelDisplayName(type, id) {
+  return codexModelEntries(type).find(model => model.id === id)?.displayName || id
+}
 function presetsByType(type) {
   const group = providerPresets[type] || {}
   return Object.entries(group).map(([provider, preset]) => ({ provider, ...preset }))
@@ -796,12 +971,101 @@ function applyProviderPreset(type, provider) {
   if (!preset) return
   cfgForm.provider = provider
   cfgForm.base_url = preset.baseUrl
-  cfgForm.models = [...preset.models]
   // 配置名持久化进 DB：用 provider 英文 + 服务类型英文标识拼，不随界面语言漂移
   cfgForm.name = `${preset.label}-${type}`
+  if (provider === 'codex') {
+    cfgForm.api_key = ''
+    cfgForm.temperature = ''
+    const liveModels = codexModelIds(type)
+    cfgForm.models = liveModels.length ? [...liveModels] : []
+    void loadCodexStatus()
+    return
+  }
+  if (provider === 'google_flow') {
+    cfgForm.api_key = ''
+    cfgForm.base_url = ''
+    cfgForm.temperature = ''
+    const liveModels = (type === 'video' ? googleFlowModels.video : googleFlowModels.image).map(model => model.id)
+    cfgForm.models = liveModels.length ? liveModels : [...preset.models]
+    void loadGoogleFlowStatus()
+    return
+  }
+  cfgForm.models = [...preset.models]
 }
 
 async function loadCfgs() { try { cfgs.value = await aiConfigAPI.list() } catch (e) { toastError(e) } }
+
+async function loadCodexStatus() {
+  codexChecking.value = true
+  try {
+    Object.assign(codexStatus, await codexAPI.status())
+    if (codexStatus.connected) await loadCodexModels()
+  } catch (e) {
+    Object.assign(codexStatus, { available: false, connected: false, detail: e?.message || '' })
+  } finally {
+    codexChecking.value = false
+  }
+}
+
+async function loadCodexModels() {
+  if (!codexStatus.connected || codexModelsLoading.value) return
+  codexModelsLoading.value = true
+  try {
+    const result = await codexAPI.models()
+    Object.assign(codexModels, result)
+    if (cfgForm.provider === 'codex') {
+      const ids = codexModelIds(cfgForm.service_type)
+      if (ids.length) {
+        const selected = cfgForm.models[0]
+        cfgForm.models = selected && ids.includes(selected)
+          ? [selected, ...ids.filter(id => id !== selected)]
+          : [...ids]
+      }
+    }
+  } catch (e) {
+    toastError(e)
+  } finally {
+    codexModelsLoading.value = false
+  }
+}
+
+async function loadGoogleFlowStatus() {
+  if (googleFlowChecking.value) return
+  googleFlowChecking.value = true
+  try {
+    const [status, models] = await Promise.all([googleFlowAPI.status(), googleFlowAPI.models()])
+    Object.assign(googleFlowStatus, status)
+    Object.assign(googleFlowModels, models)
+    if (!cfgForm.flow_authuser && status.accounts.length) cfgForm.flow_authuser = status.accounts[0].authuser
+    if (cfgForm.provider === 'google_flow') {
+      const ids = (cfgForm.service_type === 'video' ? models.video : models.image).map(model => model.id)
+      const selected = cfgForm.models[0]
+      cfgForm.models = selected && ids.includes(selected)
+        ? [selected, ...ids.filter(id => id !== selected)]
+        : ids
+    }
+  } catch (e) {
+    Object.assign(googleFlowStatus, { available: false, connected: false, detail: e?.message || '', accounts: [] })
+  } finally {
+    googleFlowChecking.value = false
+  }
+}
+
+async function connectCodex() {
+  codexConnecting.value = true
+  try {
+    Object.assign(codexStatus, await codexAPI.login())
+    if (codexStatus.connected) {
+      await loadCodexModels()
+      toast.success(t('settings.ai.codexConnectedToast'))
+    }
+  } catch (e) {
+    toastError(e)
+    await loadCodexStatus()
+  } finally {
+    codexConnecting.value = false
+  }
+}
 
 // ===== 默认模型选择 =====
 // 默认解析规则与工作台/后端一致：启用配置中优先级最高者的模型列表首位
@@ -809,7 +1073,9 @@ function defaultModelOf(type) {
   const active = cfgs.value.filter(c => c.service_type === type && c.is_active)
   if (!active.length) return null
   const top = [...active].sort((a, b) => (b.priority || 0) - (a.priority || 0))[0]
-  const first = Array.isArray(top.model) ? top.model[0] : null
+  const first = top.provider === 'codex'
+    ? (Array.isArray(top.model) && top.model[0] !== 'default' ? top.model[0] : codexModelIds(type)[0])
+    : (Array.isArray(top.model) ? top.model[0] : null)
   return first ? { configId: top.id, model: first } : null
 }
 function isDefaultModel(type, c, m) {
@@ -821,7 +1087,7 @@ async function setDefaultModel(type, c, m) {
   if (defaultSaving.value || isDefaultModel(type, c, m)) return
   defaultSaving.value = true
   try {
-    const models = [m, ...(Array.isArray(c.model) ? c.model : []).filter(x => x !== m)]
+    const models = [m, ...configModelIds(type, c).filter(x => x !== m)]
     const maxPriority = Math.max(0, ...cfgs.value.filter(x => x.service_type === type).map(x => x.priority || 0))
     const payload = { model: models }
     if ((c.priority || 0) < maxPriority) payload.priority = maxPriority + 1
@@ -860,7 +1126,7 @@ async function applyHuobaoQuickConfig() {
 function startAddCfg(t) {
   cfgEditId.value = null
   cfgTestResult.value = null
-  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', models: [], service_type: t, priority: 0, temperature: '' })
+  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', models: [], service_type: t, priority: 0, temperature: '', flow_authuser: googleFlowStatus.accounts[0]?.authuser || '0', flow_project_url: '' })
   const firstPreset = presetsByType(t)[0]
   if (firstPreset) applyProviderPreset(t, firstPreset.provider)
   cfgDialog.value = true
@@ -877,6 +1143,8 @@ function startEditCfg(c) {
     service_type: c.service_type,
     priority: c.priority ?? 0,
     temperature: c.temperature ?? '',
+    flow_authuser: c.flow_authuser || googleFlowStatus.accounts[0]?.authuser || '0',
+    flow_project_url: c.flow_project_url || '',
   })
   cfgDialog.value = true
 }
@@ -919,8 +1187,11 @@ async function saveCfg() {
     toast.warning(t('settings.cfg.tempInvalid')); return
   }
   try {
-    if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, { name: cfgForm.name, provider: cfgForm.provider, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, temperature })
-    else await aiConfigAPI.create({ service_type: cfgForm.service_type, provider: cfgForm.provider, name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}`, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, temperature })
+    const localSettings = cfgForm.provider === 'google_flow'
+      ? { flow_authuser: cfgForm.flow_authuser, flow_project_url: cfgForm.flow_project_url }
+      : {}
+    if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, { name: cfgForm.name, provider: cfgForm.provider, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, temperature, ...localSettings })
+    else await aiConfigAPI.create({ service_type: cfgForm.service_type, provider: cfgForm.provider, name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}`, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, temperature, ...localSettings })
     cfgDialog.value = false; toast.success(t('common.saved')); loadCfgs()
   } catch (e) { toastError(e) }
 }
@@ -1148,7 +1419,16 @@ async function saveSkill(id) {
 const stylePresets = ref([])
 const styleDialog = ref(false)
 const styleEditId = ref(null)
-const styleForm = reactive({ name: '', value: '', prompt: '', description: '', sort_order: 0 })
+const styleForm = reactive({ name: '', value: '', prompt: '', description: '', preview_image_url: '', sort_order: 0 })
+const stylePreviewInput = ref(null)
+const stylePreviewGenerating = ref(false)
+const stylePreviewUploading = ref(false)
+
+function stylePreviewUrl(style) {
+  const raw = String(style?.preview_image_url || style?.previewImageUrl || '')
+  if (!raw) return ''
+  return raw.startsWith('static/') ? `/${raw}` : raw
+}
 
 async function loadStylePresets() {
   try { stylePresets.value = await stylePresetAPI.list(true) } catch (e) { toastError(e) }
@@ -1183,7 +1463,7 @@ async function confirmDelStyle() {
 function startAddStyle() {
   styleEditId.value = null
   Object.assign(styleForm, {
-    name: '', value: '', prompt: '', description: '',
+    name: '', value: '', prompt: '', description: '', preview_image_url: '',
     sort_order: (stylePresets.value.at(-1)?.sort_order ?? 0) + 1,
   })
   styleDialog.value = true
@@ -1196,9 +1476,71 @@ function startEditStyle(p) {
     value: p.value,
     prompt: p.prompt,
     description: p.description || '',
+    preview_image_url: p.preview_image_url || '',
     sort_order: p.sort_order ?? 0,
   })
   styleDialog.value = true
+}
+
+async function refreshStylePreviewForm(presetId = styleEditId.value) {
+  await loadStylePresets()
+  if (styleEditId.value !== presetId) return
+  const preset = stylePresets.value.find(p => p.id === presetId)
+  if (preset) styleForm.preview_image_url = preset.preview_image_url || ''
+}
+
+async function generateStylePreview() {
+  if (!styleEditId.value || stylePreviewGenerating.value) return
+  const presetId = styleEditId.value
+  stylePreviewGenerating.value = true
+  try {
+    const result = await stylePresetAPI.generatePreview(presetId)
+    const taskId = Number(result?.task_id)
+    if (!taskId) throw new Error(t('settings.styleDialog.generateFailed'))
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      const task = await taskAPI.get(taskId)
+      if (task?.status === 'completed') {
+        await refreshStylePreviewForm(presetId)
+        toast.success(t('settings.styleDialog.previewGenerated'))
+        return
+      }
+      if (task?.status === 'failed') throw new Error(task.error_msg || task.errorMsg || t('settings.styleDialog.generateFailed'))
+    }
+    throw new Error(t('settings.styleDialog.generateTimeout'))
+  } catch (e) {
+    toastError(e)
+  } finally {
+    stylePreviewGenerating.value = false
+  }
+}
+
+async function uploadStylePreview(event) {
+  const input = event.target
+  const file = input?.files?.[0]
+  if (input) input.value = ''
+  if (!file || !styleEditId.value) return
+  stylePreviewUploading.value = true
+  try {
+    const result = await stylePresetAPI.uploadPreview(styleEditId.value, file)
+    styleForm.preview_image_url = result.preview_image_url || ''
+    await loadStylePresets()
+    toast.success(t('settings.styleDialog.previewUploaded'))
+  } catch (e) {
+    toastError(e)
+  } finally {
+    stylePreviewUploading.value = false
+  }
+}
+
+async function removeStylePreview() {
+  if (!styleEditId.value) return
+  try {
+    await stylePresetAPI.removePreview(styleEditId.value)
+    styleForm.preview_image_url = ''
+    await loadStylePresets()
+    toast.success(t('settings.styleDialog.previewRemoved'))
+  } catch (e) { toastError(e) }
 }
 
 async function saveStyle() {
@@ -1223,7 +1565,7 @@ async function saveStyle() {
   } catch (e) { toastError(e) }
 }
 
-onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills(); loadAgentPrompt(selectedAgent.value); loadStylePresets() })
+onMounted(() => { loadCfgs(); loadCodexStatus(); loadGoogleFlowStatus(); loadAgents(); loadAllSkills(); loadAgentPrompt(selectedAgent.value); loadStylePresets() })
 
 // ===== 应用内引导（设置页）：快捷配置 + 手动模板两步 =====
 const SETTINGS_TOUR = [
@@ -1436,6 +1778,14 @@ onBeforeUnmount(stopUsagePoll)
 }
 .quick-card:hover { border-color: var(--accent); }
 .quick-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.codex-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 16px 18px;
+}
+.codex-card-main, .codex-card-actions { display: flex; align-items: center; gap: 10px; }
+.codex-card-main { min-width: 0; }
+.codex-card-actions { flex-shrink: 0; }
+.codex-badge { background: var(--accent-bg); color: var(--accent-text); }
 .setup-title { font-size: 15px; font-weight: 700; color: var(--text-0); }
 .setup-desc { font-size: 12.5px; color: var(--text-2); margin-bottom: 14px; }
 .huobao-site-link {
@@ -1609,6 +1959,40 @@ onBeforeUnmount(stopUsagePoll)
 .svc-group-sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 .config-row { display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
 .config-row + .config-row { border-top: 1px solid var(--border); }
+.style-preview-thumb {
+  width: 72px;
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+.style-preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.style-preview-editor { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 14px; }
+.style-preview-canvas {
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+.style-preview-canvas img { width: 100%; height: 100%; object-fit: cover; }
+.style-preview-empty {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  color: var(--text-3); font-size: 11px;
+}
+.style-preview-actions { display: flex; align-content: flex-start; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.style-preview-actions .field-hint { flex-basis: 100%; margin-top: 4px; }
+@media (max-width: 620px) {
+  .style-preview-editor { grid-template-columns: 1fr; }
+  .style-preview-canvas { max-width: 240px; }
+}
 .provider-badge {
   width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1767,6 +2151,12 @@ onBeforeUnmount(stopUsagePoll)
 /* Dialogs */
 .config-dialog { width: min(720px, calc(100vw - 40px)); }
 .config-dialog-body { display: flex; flex-direction: column; gap: 14px; }
+.codex-dialog-panel {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--bg-0);
+}
+.codex-dialog-panel > div:first-child { flex: 1; min-width: 0; }
 .skill-dialog { width: 440px; }
 .skill-dialog-body { display: flex; flex-direction: column; gap: 12px; }
 .dialog-sub { margin-top: 4px; font-size: 12px; color: var(--text-2); }
@@ -1810,6 +2200,11 @@ onBeforeUnmount(stopUsagePoll)
   font-size: 11px;
   color: var(--text-2);
   word-break: break-all;
+}
+
+@media (max-width: 720px) {
+  .codex-card { align-items: flex-start; flex-direction: column; }
+  .codex-card-actions { width: 100%; flex-wrap: wrap; }
 }
 
 /* 存储位置 */

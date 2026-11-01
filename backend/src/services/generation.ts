@@ -8,13 +8,15 @@ import fs from 'node:fs'
 import { getAbsolutePath } from '../utils/storage.js'
 import { downloadVideo, safeTaskError } from './video-download.js'
 import { prepareReferenceAudio, resolveReferenceAudioUrls } from './reference-audio.js'
-import { getActiveConfig, getConfigById } from './ai.js'
+import { getActiveConfig, getConfigById, parseConfigSettings } from './ai.js'
 import { now } from '../utils/response.js'
-import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, saveBase64Image } from '../utils/storage.js'
+import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, saveBase64Image, saveUploadedFile } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
 import { getImageAdapter, getVideoAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, logTaskWarn, redactUrl } from '../utils/task-logger.js'
+import { generateCodexImage } from './codex-image.js'
+import { generateGoogleFlowImage, generateGoogleFlowVideo } from './google-flow.js'
 
 type TaskType = 'image' | 'video'
 
@@ -40,6 +42,7 @@ interface GenerateImageParams {
   sceneId?: number
   characterId?: number
   propId?: number
+  stylePresetId?: number
   prompt: string
   model?: string
   size?: string
@@ -92,6 +95,7 @@ export async function generateImage(params: GenerateImageParams): Promise<number
     size: params.size || '1920x1080',
     frameType: params.frameType,
     referenceImages: params.referenceImages,
+    stylePresetId: params.stylePresetId,
   })
 
   logTaskStart('ImageTask', 'enqueue', {
@@ -234,6 +238,42 @@ async function processTask(id: number, config: AIConfig) {
     let url: string, method: string, headers: Record<string, string>, body: unknown
 
     if (type === 'image') {
+      if (config.provider.toLowerCase() === 'google_flow') {
+        const references = await normalizeReferenceImages(params.referenceImages)
+        logTaskProgress(label, 'google-flow-image-request', { id, model: record.model })
+        const image = await generateGoogleFlowImage({
+          prompt: record.prompt || '',
+          model: record.model,
+          size: params.size,
+          references,
+          authuser: config.flowAuthuser,
+          projectUrl: config.flowProjectUrl,
+        })
+        await rememberGoogleFlowProject(config, image.metadata?.projectUrl)
+        await handleImageCompleteBase64(record, image.buffer.toString('base64'), image.mimeType)
+        return
+      }
+      if (config.provider.toLowerCase() === 'codex') {
+        logTaskProgress(label, 'codex-image-request', {
+          id,
+          provider: 'codex',
+          model: record.model,
+        })
+        const image = await generateCodexImage({
+          prompt: record.prompt || '',
+          model: record.model,
+          size: params.size,
+          quality: params.quality,
+        })
+        logTaskProgress(label, 'sync-base64-complete', {
+          id,
+          provider: 'codex',
+          model: image.model,
+          mimeType: image.mimeType,
+        })
+        await handleImageCompleteBase64(record, image.data, image.mimeType)
+        return
+      }
       const adapter = getImageAdapter(config.provider)
       const resolvedReferenceImages = await normalizeReferenceImages(params.referenceImages)
       ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
@@ -245,6 +285,29 @@ async function processTask(id: number, config: AIConfig) {
         referenceImages: resolvedReferenceImages.length ? JSON.stringify(resolvedReferenceImages) : null,
       }))
     } else {
+      if (config.provider.toLowerCase() === 'google_flow') {
+        const rawReferences = [
+          params.firstFrameUrl,
+          params.lastFrameUrl,
+          params.imageUrl,
+          ...(Array.isArray(params.referenceImageUrls) ? params.referenceImageUrls : []),
+        ].filter((value): value is string => typeof value === 'string' && !!value)
+        const references = await normalizeVideoReferenceUrls(rawReferences)
+        logTaskProgress(label, 'google-flow-video-request', { id, model: record.model })
+        const video = await generateGoogleFlowVideo({
+          prompt: record.prompt || '',
+          model: record.model,
+          aspectRatio: params.aspectRatio,
+          resolution: params.resolution,
+          duration: params.duration,
+          references,
+          authuser: config.flowAuthuser,
+          projectUrl: config.flowProjectUrl,
+        })
+        await rememberGoogleFlowProject(config, video.metadata?.projectUrl)
+        await handleVideoCompleteBuffer(record, video.buffer, video.duration)
+        return
+      }
       const adapter = getVideoAdapter(config.provider)
       const resolvedImageUrl = await normalizeVideoReferenceUrl(params.imageUrl)
       const resolvedFirstFrameUrl = await normalizeVideoReferenceUrl(params.firstFrameUrl)
@@ -504,6 +567,11 @@ async function writeBackImageAssets(record: SysTaskRecord, localPath: string) {
   if (record.propId) {
     await db.update(schema.props).set({ imageUrl: localPath, updatedAt: now() }).where(eq(schema.props.id, record.propId))
   }
+  if (Number.isSafeInteger(Number(params.stylePresetId)) && Number(params.stylePresetId) > 0) {
+    await db.update(schema.stylePresets)
+      .set({ previewImageUrl: localPath, updatedAt: now() })
+      .where(eq(schema.stylePresets.id, Number(params.stylePresetId)))
+  }
 }
 
 async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, duration: number | null | undefined) {
@@ -530,6 +598,44 @@ async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, dura
   } catch (error) {
     await failTask(record.id, safeTaskError(error), 'delivery_failed')
   }
+}
+
+async function handleVideoCompleteBuffer(record: SysTaskRecord, buffer: Buffer, duration: number | null | undefined) {
+  const bytes = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+  const localPath = await saveUploadedFile(bytes, 'videos', `google-flow-${record.id}.mp4`)
+  await db.update(schema.sysTask)
+    .set({ localPath, stage: 'saving', status: 'processing', updatedAt: now() })
+    .where(eq(schema.sysTask.id, record.id))
+  await extractVideoPoster(localPath)
+  db.transaction(tx => {
+    const newer = record.storyboardId ? tx.select({ id: schema.sysTask.id }).from(schema.sysTask)
+      .where(and(eq(schema.sysTask.storyboardId, record.storyboardId), eq(schema.sysTask.type, 'video'), gt(schema.sysTask.id, record.id))).get() : null
+    if (record.storyboardId && !newer) tx.update(schema.storyboards)
+      .set({ videoUrl: localPath, duration: duration || undefined, updatedAt: now() })
+      .where(eq(schema.storyboards.id, record.storyboardId)).run()
+    tx.update(schema.sysTask).set({
+      localPath,
+      status: 'completed',
+      stage: 'completed',
+      errorCode: null,
+      errorMsg: null,
+      completedAt: now(),
+      updatedAt: now(),
+    }).where(eq(schema.sysTask.id, record.id)).run()
+  })
+}
+
+async function rememberGoogleFlowProject(config: AIConfig, projectUrl: unknown): Promise<void> {
+  if (!config.id || typeof projectUrl !== 'string' || !projectUrl.includes('flow.google.com')) return
+  if (config.flowProjectUrl === projectUrl) return
+  const [row] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, config.id))
+  if (!row) return
+  const settings = parseConfigSettings(row.settings)
+  settings.flowProjectUrl = projectUrl
+  await db.update(schema.aiServiceConfigs)
+    .set({ settings: JSON.stringify(settings), updatedAt: now() })
+    .where(eq(schema.aiServiceConfigs.id, config.id))
+  config.flowProjectUrl = projectUrl
 }
 
 async function recoveryConfig(record: SysTaskRecord): Promise<AIConfig> {

@@ -336,7 +336,7 @@ async function getModel(fileModel: string | undefined, modelOverride?: string, t
   return provider.chat(modelName)
 }
 
-const AGENT_TOOLS: Record<string, Record<string, any>> = {
+export const AGENT_TOOLS: Record<string, Record<string, any>> = {
   script_rewriter: scriptTools,
   extractor: extractTools,
   storyboard_breaker: storyboardTools,
@@ -349,19 +349,23 @@ const AGENT_TOOLS: Record<string, Record<string, any>> = {
 
 /** instructions 按请求解析：prompt 文件（或默认）+ 技能全文拼接 + 目标语言指令块
  *  prompt/skill 文本随内容语言切换语言变体（<type>.<lang>.md / SKILL.<lang>.md），缺失回退中文版 */
+export async function resolveAgentInstructions(type: string, requestContext?: RequestContext) {
+  const defaults = DEFAULT_PROMPTS[type]
+  const lang = getContentLanguageFromRC(requestContext)
+  const promptFile = await loadAgentPromptFile(type, lang)
+  const baseInstructions = promptFile?.instructions || defaults.instructions
+  const skillInstructions = await loadAgentSkills(type, lang)
+  const languageDirective = buildLanguageDirective(lang)
+  const voiceInstructions = getVoiceReferenceInstructions(type, lang)
+  return [baseInstructions, skillInstructions, voiceInstructions, languageDirective]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 function buildInstructions(type: string) {
-  return async ({ requestContext }: { requestContext?: RequestContext }) => {
-    const defaults = DEFAULT_PROMPTS[type]
-    const lang = getContentLanguageFromRC(requestContext)
-    const promptFile = await loadAgentPromptFile(type, lang)
-    const baseInstructions = promptFile?.instructions || defaults.instructions
-    const skillInstructions = await loadAgentSkills(type, lang)
-    const languageDirective = buildLanguageDirective(lang)
-    const voiceInstructions = getVoiceReferenceInstructions(type, lang)
-    return [baseInstructions, skillInstructions, voiceInstructions, languageDirective]
-      .filter(Boolean)
-      .join('\n\n')
-  }
+  return ({ requestContext }: { requestContext?: RequestContext }) => (
+    resolveAgentInstructions(type, requestContext)
+  )
 }
 
 /** model 按请求解析：基础版 prompt 文件 frontmatter + RequestContext 的 modelOverride/textConfigId 覆盖

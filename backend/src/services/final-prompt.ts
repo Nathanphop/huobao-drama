@@ -8,8 +8,8 @@
  */
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
-import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import { generateConfiguredAgent } from '../agents/generate.js'
 import { logTaskError, logTaskProgress } from '../utils/task-logger.js'
 
 type CharacterRow = typeof schema.characters.$inferSelect
@@ -20,15 +20,13 @@ type PropRow = typeof schema.props.$inferSelect
 export interface PromptAgentOptions { model?: string; configId?: number }
 
 async function runPromptAgent(episodeId: number, dramaId: number, message: string, opts?: PromptAgentOptions) {
-  const agent = mastra.getAgent('prompt_generator')
-  if (!agent) throw new Error('图片提示词 Agent 不可用')
   const requestContext = buildAgentRequestContext({
     episodeId,
     dramaId,
     modelOverride: opts?.model || undefined,
     textConfigId: opts?.configId || undefined,
   })
-  await agent.generate([{ role: 'user', content: message }], { maxSteps: 12, requestContext })
+  await generateConfiguredAgent('prompt_generator', [{ role: 'user', content: message }], { maxSteps: 12, requestContext })
 }
 
 /** 确保角色拥有三视图最终提示词，返回最终提示词（失败返回 ''）；force 时忽略已有提示词强制重新生成 */

@@ -16,23 +16,30 @@ export interface AIConfig {
   model: string
   /** 采样温度，null 表示不设置（跟随服务商默认）。存于 ai_service_configs.settings JSON */
   temperature?: number | null
+  flowAuthuser?: string | null
+  flowProjectUrl?: string | null
+}
+
+export function parseConfigSettings(settingsRaw: string | null | undefined): Record<string, any> {
+  if (!settingsRaw) return {}
+  try {
+    const parsed = JSON.parse(settingsRaw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
 }
 
 /** 从 settings JSON 解析 temperature；非法值一律视为未设置 */
 export function parseConfigTemperature(settingsRaw: string | null | undefined): number | null {
-  if (!settingsRaw) return null
-  try {
-    const t = JSON.parse(settingsRaw)?.temperature
-    return typeof t === 'number' && Number.isFinite(t) ? t : null
-  } catch {
-    return null
-  }
+  const t = parseConfigSettings(settingsRaw).temperature
+  return typeof t === 'number' && Number.isFinite(t) ? t : null
 }
 
 export const officialProviders: Record<ServiceType, readonly string[]> = {
-  text: ['openai', 'gemini', 'volcengine'],
-  image: ['openai', 'gemini', 'volcengine'],
-  video: ['volcengine', 'minimax', 'aliyun'],
+  text: ['openai', 'gemini', 'volcengine', 'codex'],
+  image: ['openai', 'gemini', 'volcengine', 'codex', 'google_flow'],
+  video: ['volcengine', 'minimax', 'aliyun', 'google_flow'],
 }
 
 export function isOfficialProvider(serviceType?: string | null, provider?: string | null): boolean {
@@ -76,6 +83,7 @@ export async function getActiveConfig(serviceType: ServiceType): Promise<AIConfi
   }
 
   const models = active.model ? JSON.parse(active.model) : []
+  const settings = parseConfigSettings(active.settings)
   const logKey = `${active.id}:${models[0] || ''}`
   if (lastLoggedActiveConfigKey.get(serviceType) !== logKey) {
     lastLoggedActiveConfigKey.set(serviceType, logKey)
@@ -94,6 +102,8 @@ export async function getActiveConfig(serviceType: ServiceType): Promise<AIConfi
     apiKey: active.apiKey,
     model: models[0] || '',
     temperature: parseConfigTemperature(active.settings),
+    flowAuthuser: typeof settings.flowAuthuser === 'string' ? settings.flowAuthuser : null,
+    flowProjectUrl: typeof settings.flowProjectUrl === 'string' ? settings.flowProjectUrl : null,
   }
 }
 
@@ -131,6 +141,7 @@ export async function getConfigById(id: number): Promise<AIConfig | null> {
     return null
   }
   const models = row.model ? JSON.parse(row.model) : []
+  const settings = parseConfigSettings(row.settings)
   const logKey = `${row.provider}:${models[0] || ''}:${row.serviceType}`
   if (lastLoggedConfigByIdKey.get(id) !== logKey) {
     lastLoggedConfigByIdKey.set(id, logKey)
@@ -148,5 +159,7 @@ export async function getConfigById(id: number): Promise<AIConfig | null> {
     apiKey: row.apiKey,
     model: models[0] || '',
     temperature: parseConfigTemperature(row.settings),
+    flowAuthuser: typeof settings.flowAuthuser === 'string' ? settings.flowAuthuser : null,
+    flowProjectUrl: typeof settings.flowProjectUrl === 'string' ? settings.flowProjectUrl : null,
   }
 }

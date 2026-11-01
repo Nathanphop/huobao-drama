@@ -192,6 +192,7 @@ export const stylePresets = sqliteTable('style_presets', {
   value: text('value').notNull(),
   prompt: text('prompt').notNull(),
   description: text('description'),
+  previewImageUrl: text('preview_image_url'),
   sortOrder: integer('sort_order').default(0),
   isActive: integer('is_active', { mode: 'boolean' }).default(true),
   createdAt: text('created_at').notNull(),
